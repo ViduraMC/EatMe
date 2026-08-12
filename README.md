@@ -211,11 +211,11 @@ Details and the full list of types and scopes are in [CONTRIBUTING.md](CONTRIBUT
 
 | Member | Registration Number | Module Owned | GitHub |
 |---|---|---|---|
-| [MEMBER 1 NAME] | [REG NO] | Donation and Food Listing | [@username] |
-| [MEMBER 2 NAME] | [REG NO] | Food Requests | [@username] |
-| [MEMBER 3 NAME] | [REG NO] | Delivery Coordination | [@username] |
-| [MEMBER 4 NAME] | [REG NO] | Driver and Delivery | [@username] |
-| [MEMBER 5 NAME] | [REG NO] | Administration | [@username] |
+| S.A.V.M. Chandrasekara | IT23724402 | Donation and Food Listing | [@ViduraMC](https://github.com/ViduraMC) |
+| H.D. Cabraal | IT23693340 | Food Requests | [@HarithaCabraal](https://github.com/HarithaCabraal) |
+| M.M.Y.K. Bandara | IT23571198 | Delivery Coordination | [@kaushalba](https://github.com/kaushalba) |
+| L.D.B. Madigasekara | IT23616042 | Driver and Delivery | [@lakkhanaMadi](https://github.com/lakkhanaMadi) |
+| N.A. Jeewaraja | IT23654358 | Administration | [@naily247](https://github.com/naily247) |
 
 Scrum roles rotate each sprint. The rotation is recorded in the [project charter](docs/01-project-charter.md).
 
