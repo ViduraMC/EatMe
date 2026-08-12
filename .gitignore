@@ -1,0 +1,118 @@
+# ============================================
+# EatMe
+# ============================================
+
+# ---------- Dependencies ----------
+node_modules/
+.pnp
+.pnp.js
+jspm_packages/
+
+# ---------- Environment variables and secrets ----------
+# Never commit real credentials. .env.example is committed, .env is not.
+.env
+.env.local
+.env.development
+.env.development.local
+.env.test
+.env.test.local
+.env.production
+.env.production.local
+*.pem
+*.key
+
+# ---------- Expo and React Native ----------
+.expo/
+.expo-shared/
+dist/
+web-build/
+expo-env.d.ts
+
+# Native build output
+android/
+ios/
+*.jks
+*.p8
+*.p12
+*.mobileprovision
+*.orig.*
+
+# Metro bundler
+.metro-health-check*
+.haste_map.json
+.jest/
+
+# ---------- Node and build output ----------
+build/
+out/
+coverage/
+*.tsbuildinfo
+.cache/
+.parcel-cache/
+
+# ---------- Prisma ----------
+# The schema and migrations ARE committed. Only generated output is ignored.
+server/prisma/generated/
+server/src/generated/
+
+# ---------- Database ----------
+*.sqlite
+*.sqlite3
+*.db
+*.sql.bak
+dump.rdb
+
+# ---------- Logs ----------
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
+
+# ---------- Testing ----------
+.nyc_output/
+junit.xml
+
+# ---------- Editors and IDEs ----------
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json.example
+.idea/
+*.swp
+*.swo
+*.sublime-workspace
+*.sublime-project
+.history/
+
+# ---------- Operating system ----------
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Thumbs.db:encryptable
+desktop.ini
+$RECYCLE.BIN/
+
+# ---------- Temporary and misc ----------
+tmp/
+temp/
+*.tmp
+*.bak
+.eslintcache
+.turbo/
+
+# ---------- Uploaded files (local development) ----------
+server/uploads/
+!server/uploads/.gitkeep
+
+# ---------- AI assistant context (personal, not shared) ----------
+CLAUDE.md
+CLAUDE.local.md
+.claude/
+!.claude/settings.json.example
