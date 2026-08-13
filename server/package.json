@@ -8,15 +8,15 @@
     "dev": "tsx watch src/server.ts",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/server.js",
-    "typecheck": "tsc --noEmit",
-    "lint": "prettier --check \"src/**/*.ts\" \"prisma/**/*.ts\" \u0026\u0026 tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.seed.json",
+    "lint": "prettier --check \"src/**/*.ts\" \"prisma/**/*.ts\" && npm run typecheck",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",
     "db:reset": "prisma migrate reset",
     "db:seed": "tsx prisma/seed.ts",
     "db:studio": "prisma studio",
-    "test": "echo \"Testing is manual on a physical device. See CONTRIBUTING.md section 4.\" \u0026\u0026 exit 0"
+    "test": "echo \"Testing is manual on a physical device. See CONTRIBUTING.md section 4.\" && exit 0"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
