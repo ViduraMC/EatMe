@@ -2,5 +2,10 @@ node_modules/
 server/dist/
 server/prisma/migrations/
 mobile/.expo/
-docs/diagrams/
 package-lock.json
+
+# Assignment artefacts are authored outside this repository and are graded as
+# written. Reformatting their markdown tables would create noise in the diff and
+# fight with whoever maintains them.
+docs/
+CONTRIBUTING.md
