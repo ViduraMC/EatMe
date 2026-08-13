@@ -1,0 +1,32 @@
+{
+  "name": "eatme-mobile",
+  "version": "0.1.0",
+  "main": "index.ts",
+  "dependencies": {
+    "@react-navigation/native": "^7.3.16",
+    "@react-navigation/native-stack": "^7.18.8",
+    "axios": "^1.19.0",
+    "expo": "~57.0.12",
+    "expo-secure-store": "~57.0.1",
+    "expo-status-bar": "~57.0.1",
+    "react": "19.2.3",
+    "react-native": "0.86.2",
+    "react-native-safe-area-context": "~5.7.0",
+    "react-native-screens": "~4.26.0"
+  },
+  "devDependencies": {
+    "@types/react": "~19.2.2",
+    "typescript": "~6.0.3"
+  },
+  "scripts": {
+    "start": "expo start",
+    "start:clear": "expo start --clear",
+    "android": "expo start --android",
+    "ios": "expo start --ios",
+    "web": "expo start --web",
+    "typecheck": "tsc --noEmit",
+    "lint": "prettier --check \"src/**/*.{ts,tsx}\" \"App.tsx\" && tsc --noEmit",
+    "test": "echo \"Testing is manual on a physical device. See CONTRIBUTING.md section 4.\" && exit 0"
+  },
+  "private": true
+}
