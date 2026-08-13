@@ -5,7 +5,9 @@
   "description": "Community food sharing and surplus redistribution platform. SLIIT SE3080, Group 1.",
   "scripts": {
     "prepare": "husky",
-    "install:all": "npm install && npm --prefix server install && npm --prefix mobile install",
+    "install:all": "npm install && npm run install:server && npm run install:mobile",
+    "install:server": "cd server && npm install",
+    "install:mobile": "cd mobile && npm install",
     "dev:server": "npm --prefix server run dev",
     "dev:mobile": "npm --prefix mobile run start",
     "build": "npm --prefix server run build",
