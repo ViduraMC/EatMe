@@ -1,0 +1,33 @@
+{
+  "name": "eatme",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Community food sharing and surplus redistribution platform. SLIIT SE3080, Group 1.",
+  "scripts": {
+    "prepare": "husky",
+    "install:all": "npm install && npm --prefix server install && npm --prefix mobile install",
+    "dev:server": "npm --prefix server run dev",
+    "dev:mobile": "npm --prefix mobile run start",
+    "build": "npm --prefix server run build",
+    "typecheck": "npm --prefix server run typecheck && npm --prefix mobile run typecheck",
+    "lint": "npm --prefix server run lint && npm --prefix mobile run lint",
+    "format": "prettier --write \"**/*.{ts,tsx,js,json,md}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,js,json,md}\"",
+    "db:migrate": "npm --prefix server run db:migrate",
+    "db:seed": "npm --prefix server run db:seed",
+    "db:studio": "npm --prefix server run db:studio",
+    "test": "echo \"Testing is manual against user story acceptance criteria on a physical device. See CONTRIBUTING.md section 4.\" && exit 0"
+  },
+  "lint-staged": {
+    "*.{ts,tsx,js,json,md}": [
+      "prettier --write"
+    ]
+  },
+  "devDependencies": {
+    "@commitlint/cli": "^19.6.1",
+    "@commitlint/config-conventional": "^19.6.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^15.3.0",
+    "prettier": "^3.4.2"
+  }
+}

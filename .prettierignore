@@ -1,0 +1,6 @@
+node_modules/
+server/dist/
+server/prisma/migrations/
+mobile/.expo/
+docs/diagrams/
+package-lock.json
