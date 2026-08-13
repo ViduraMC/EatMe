@@ -27,16 +27,17 @@ Surplus food goes to waste while organisations that need it cannot find it in ti
 
 ## Tech Stack
 
-| Layer | Technology | Why |
-|---|---|---|
-| Mobile app | React Native with Expo | Cross platform from one codebase, testable on a physical device without a local Android or iOS toolchain |
-| Navigation | React Navigation | Standard routing for React Native, supports the role based navigation stacks this app needs |
-| Backend | Node.js with Express | Same language as the mobile app, fast to build a REST API |
-| Database | MySQL | The data model is relational, with foreign keys and status enums across seven core entities |
-| ORM | Prisma | The schema file doubles as the database specification, and migrations give a versioned record of schema changes |
-| Authentication | JSON Web Tokens | Stateless auth suited to a mobile client |
-| Design | Figma | Wireframes and screen designs |
-| Project management | ClickUp | Backlog, sprints, ceremony records |
+| Layer              | Technology             | Why                                                                                                                     |
+| ------------------ | ---------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| Language           | TypeScript, both sides | One language across the app and the API, with the compiler catching a whole class of mistakes before they reach a phone |
+| Mobile app         | React Native with Expo | Cross platform from one codebase, testable on a physical device without a local Android or iOS toolchain                |
+| Navigation         | React Navigation       | Standard routing for React Native, supports the role based navigation stacks this app needs                             |
+| Backend            | Node.js with Express   | Same language as the mobile app, fast to build a REST API                                                               |
+| Database           | MySQL                  | The data model is relational, with foreign keys and status enums across seven core entities                             |
+| ORM                | Prisma                 | The schema file doubles as the database specification, and migrations give a versioned record of schema changes         |
+| Authentication     | JSON Web Tokens        | Stateless auth suited to a mobile client                                                                                |
+| Design             | Figma                  | Wireframes and screen designs                                                                                           |
+| Project management | ClickUp                | Backlog, sprints, ceremony records                                                                                      |
 
 ---
 
@@ -76,27 +77,36 @@ EatMe/
 │   │   │   ├── coordinator/         Delivery coordination module
 │   │   │   ├── driver/              Driver delivery module
 │   │   │   └── admin/               Administration module
-│   │   └── utils/                   Formatting, expiry and urgency helpers, validation
-│   ├── App.js
+│   │   ├── types/                   Shared API response and domain types
+│   │   └── utils/                   Token storage, formatting, validation helpers
+│   ├── App.tsx
 │   ├── app.json
+│   ├── .env.example
 │   └── package.json
 │
 ├── server/                          Node.js and Express REST API
 │   ├── prisma/
 │   │   ├── schema.prisma            Database schema, the single source of truth
 │   │   └── migrations/
+│   │   ├── migrations/
+│   │   └── seed.ts                  Sample users, listings and requests
 │   ├── src/
-│   │   ├── config/                  Database and environment configuration
+│   │   ├── config/                  Environment validation and the Prisma client
 │   │   ├── controllers/             One controller per module
 │   │   ├── middleware/              Auth, role guards, error handling, validation
 │   │   ├── routes/                  One route file per module
 │   │   ├── services/                Business logic, including expiry and urgency rules
-│   │   ├── utils/
-│   │   └── app.js
+│   │   ├── types/                   Shared types, including the public user shape
+│   │   ├── utils/                   JWT helpers, response envelope, async wrapper
+│   │   ├── app.ts                   Express app, middleware and route mounting
+│   │   └── server.ts                Startup, database check and LAN address
 │   ├── .env.example
 │   └── package.json
 │
+├── .husky/                          Commit message and pre-commit hooks
 ├── .gitignore
+├── commitlint.config.js
+├── package.json                     Root scripts and shared tooling
 └── README.md
 ```
 
@@ -108,62 +118,123 @@ EatMe/
 
 ### Prerequisites
 
-- Node.js version 18 or later
-- npm
-- MySQL version 8 or later running locally
+- Node.js version 18 or later, and npm
+- MySQL version 8 or later running locally. XAMPP is fine; start MySQL from its control panel
 - The Expo Go app installed on your phone, from the Play Store or App Store
+- Your phone and your laptop on the **same Wi-Fi network**
 
-### 1. Clone the repository
+### 1. Clone and install
 
 ```bash
 git clone https://github.com/ViduraMC/EatMe.git
-cd EatMe
 ```
 
-### 2. Set up the backend
-
 ```bash
-cd server
-npm install
-cp .env.example .env
+cd EatMe && npm install
 ```
 
-Open `.env` and fill in your local database credentials and a JWT secret. Then create the database schema:
+That root `npm install` is not optional. It installs the shared tooling and activates the git hooks that check your commit messages. **Skip it and your commits silently bypass the format the module grades us on.**
+
+Then install both sides:
 
 ```bash
-npx prisma migrate dev
+npm run install:all
+```
+
+### 2. Create the database
+
+Create an empty database. In MySQL, or phpMyAdmin if you use XAMPP:
+
+```sql
+CREATE DATABASE eatme;
+```
+
+### 3. Set up the backend
+
+```bash
+cd server && cp .env.example .env
+```
+
+Open `server/.env` and set `DATABASE_URL` to match your MySQL user and password, and put a long random string in `JWT_SECRET`. Generate one with:
+
+```bash
+node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
+```
+
+Create the tables and fill them with sample data:
+
+```bash
+npm run db:migrate
+```
+
+```bash
+npm run db:seed
+```
+
+The seed prints a table of logins. Every seeded account uses the password `Test@1234`:
+
+| Email                  | Role        |
+| ---------------------- | ----------- |
+| `donor@eatme.lk`       | donor       |
+| `recipient@eatme.lk`   | recipient   |
+| `coordinator@eatme.lk` | coordinator |
+| `driver@eatme.lk`      | driver      |
+| `admin@eatme.lk`       | admin       |
+
+There are also extra donor and recipient accounts, three listings and seven food items spread across the urgency range, so the browse screen has something realistic in it from the first run.
+
+Start the API:
+
+```bash
 npm run dev
 ```
 
-The API runs on `http://localhost:5000` by default.
+It listens on port 5000 and prints your LAN address on startup, along with the exact `EXPO_PUBLIC_API_URL` line to paste into the mobile app. Check it works by opening `http://localhost:5000/api/health` in a browser.
 
-### 3. Set up the mobile app
+### 4. Set up the mobile app
 
-Open a second terminal:
-
-```bash
-cd mobile
-npm install
-```
-
-Create a file named `.env` in the `mobile` folder with your machine's local network IP address, not localhost, because the app runs on your phone and cannot reach the laptop's localhost:
-
-```
-EXPO_PUBLIC_API_URL=http://192.168.1.X:5000/api
-```
-
-Then start it:
+In a second terminal:
 
 ```bash
-npx expo start
+cd mobile && cp .env.example .env
 ```
 
-Scan the QR code with Expo Go on your phone.
+Open `mobile/.env` and set `EXPO_PUBLIC_API_URL` to the line the API printed. It must be your laptop's LAN IP, **never `localhost`**, because on a phone `localhost` means the phone itself:
+
+```
+EXPO_PUBLIC_API_URL=http://192.168.1.5:5000/api
+```
+
+Then start Expo and scan the QR code with Expo Go:
+
+```bash
+npm start
+```
+
+Log in with any account from the seed table above. Each role lands on its own screen.
+
+### Useful scripts
+
+Run these from the repository root.
+
+| Script               | What it does                         |
+| -------------------- | ------------------------------------ |
+| `npm run dev:server` | Start the API with hot reload        |
+| `npm run dev:mobile` | Start Expo                           |
+| `npm run db:migrate` | Apply migrations                     |
+| `npm run db:seed`    | Wipe and reseed sample data          |
+| `npm run db:studio`  | Browse the database in Prisma Studio |
+| `npm run typecheck`  | Typecheck both sides                 |
+| `npm run lint`       | Format check and typecheck           |
+| `npm run format`     | Rewrite files with Prettier          |
 
 ### Troubleshooting
 
-- **The app cannot reach the API.** Your phone and laptop must be on the same Wi-Fi network, and `EXPO_PUBLIC_API_URL` must use the laptop's local IP address. Find it with `ipconfig` on Windows or `ifconfig` on macOS and Linux.
-- **Prisma migration fails.** Confirm MySQL is running and that the database named in `DATABASE_URL` exists.
+- **The app cannot reach the API.** Your phone and laptop must be on the same Wi-Fi network, and `EXPO_PUBLIC_API_URL` must use the laptop's LAN IP, not `localhost`. Find it with `ipconfig` on Windows or `ifconfig` on macOS and Linux, or read it from the API's startup output. After changing `.env`, restart Expo with `npm run start:clear`; the value is baked into the bundle at build time.
+- **Prisma migration fails.** Confirm MySQL is running and that the database named in `DATABASE_URL` exists. XAMPP does not start MySQL automatically.
+- **The API exits with "Invalid environment configuration".** A variable in `server/.env` is missing or too short. The message names it.
+- **`Cannot find module` after pulling.** Someone added a dependency. Run `npm run install:all` from the root.
+- **Your commit was rejected.** The message must match `type(scope): subject`, for example `feat(donation): add listing form`. See CONTRIBUTING.md section 2.
 
 ---
 
@@ -209,13 +280,13 @@ Details and the full list of types and scopes are in [CONTRIBUTING.md](CONTRIBUT
 
 ## Team
 
-| Member | Registration Number | Module Owned | GitHub |
-|---|---|---|---|
-| S.A.V.M. Chandrasekara | IT23724402 | Donation and Food Listing | [@ViduraMC](https://github.com/ViduraMC) |
-| H.D. Cabraal | IT23693340 | Food Requests | [@HarithaCabraal](https://github.com/HarithaCabraal) |
-| M.M.Y.K. Bandara | IT23571198 | Delivery Coordination | [@kaushalba](https://github.com/kaushalba) |
-| L.D.B. Madigasekara | IT23616042 | Driver and Delivery | [@lakkhanaMadi](https://github.com/lakkhanaMadi) |
-| N.A. Jeewaraja | IT23654358 | Administration | [@naily247](https://github.com/naily247) |
+| Member                 | Registration Number | Module Owned              | GitHub                                               |
+| ---------------------- | ------------------- | ------------------------- | ---------------------------------------------------- |
+| S.A.V.M. Chandrasekara | IT23724402          | Donation and Food Listing | [@ViduraMC](https://github.com/ViduraMC)             |
+| H.D. Cabraal           | IT23693340          | Food Requests             | [@HarithaCabraal](https://github.com/HarithaCabraal) |
+| M.M.Y.K. Bandara       | IT23571198          | Delivery Coordination     | [@kaushalba](https://github.com/kaushalba)           |
+| L.D.B. Madigasekara    | IT23616042          | Driver and Delivery       | [@lakkhanaMadi](https://github.com/lakkhanaMadi)     |
+| N.A. Jeewaraja         | IT23654358          | Administration            | [@naily247](https://github.com/naily247)             |
 
 Scrum roles rotate each sprint. The rotation is recorded in the [project charter](docs/01-project-charter.md).
 
@@ -223,14 +294,14 @@ Scrum roles rotate each sprint. The rotation is recorded in the [project charter
 
 ## Documentation
 
-| Document | Contents |
-|---|---|
+| Document                                      | Contents                                                                        |
+| --------------------------------------------- | ------------------------------------------------------------------------------- |
 | [Project Charter](docs/01-project-charter.md) | Product vision, problem statement, objectives, scope, stakeholders, constraints |
-| [Product Backlog](docs/02-product-backlog.md) | Epics, user stories, acceptance criteria, estimates |
-| [Database Design](docs/03-database-design.md) | ER diagram and table specifications |
-| [Architecture](docs/04-architecture.md) | System architecture and module breakdown |
-| [API Plan](docs/05-api-plan.md) | Planned REST endpoints |
-| [Sprint Records](docs/sprints/) | Sprint planning, stand up, review and retrospective records |
+| [Product Backlog](docs/02-product-backlog.md) | Epics, user stories, acceptance criteria, estimates                             |
+| [Database Design](docs/03-database-design.md) | ER diagram and table specifications                                             |
+| [Architecture](docs/04-architecture.md)       | System architecture and module breakdown                                        |
+| [API Plan](docs/05-api-plan.md)               | Planned REST endpoints                                                          |
+| [Sprint Records](docs/sprints/)               | Sprint planning, stand up, review and retrospective records                     |
 
 ---
 
