@@ -87,7 +87,6 @@ EatMe/
 ├── server/                          Node.js and Express REST API
 │   ├── prisma/
 │   │   ├── schema.prisma            Database schema, the single source of truth
-│   │   └── migrations/
 │   │   ├── migrations/
 │   │   └── seed.ts                  Sample users, listings and requests
 │   ├── src/
