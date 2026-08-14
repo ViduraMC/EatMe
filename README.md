@@ -27,17 +27,17 @@ Surplus food goes to waste while organisations that need it cannot find it in ti
 
 ## Tech Stack
 
-| Layer              | Technology             | Why                                                                                                                     |
-| ------------------ | ---------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| Language           | TypeScript, both sides | One language across the app and the API, with the compiler catching a whole class of mistakes before they reach a phone |
-| Mobile app         | React Native with Expo | Cross platform from one codebase, testable on a physical device without a local Android or iOS toolchain                |
-| Navigation         | React Navigation       | Standard routing for React Native, supports the role based navigation stacks this app needs                             |
-| Backend            | Node.js with Express   | Same language as the mobile app, fast to build a REST API                                                               |
-| Database           | MySQL                  | The data model is relational, with foreign keys and status enums across seven core entities                             |
-| ORM                | Prisma                 | The schema file doubles as the database specification, and migrations give a versioned record of schema changes         |
-| Authentication     | JSON Web Tokens        | Stateless auth suited to a mobile client                                                                                |
-| Design             | Figma                  | Wireframes and screen designs                                                                                           |
-| Project management | ClickUp                | Backlog, sprints, ceremony records                                                                                      |
+| Layer              | Technology             | Why                                                                                                                                                                              |
+| ------------------ | ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Language           | TypeScript, both sides | One language across the app and the API, with the compiler catching a whole class of mistakes before they reach a phone                                                          |
+| Mobile app         | React Native with Expo | Cross platform from one codebase, testable on a physical device without a local Android or iOS toolchain                                                                         |
+| Navigation         | React Navigation       | Standard routing for React Native, supports the role based navigation stacks this app needs                                                                                      |
+| Backend            | Node.js with Express   | Same language as the mobile app, fast to build a REST API                                                                                                                        |
+| Database           | PostgreSQL             | Relational data with foreign keys and status enums across seven core entities, plus CHECK constraints to enforce the packaged versus prepared expiry rule in the database itself |
+| ORM                | Prisma                 | The schema file doubles as the database specification, and migrations give a versioned record of schema changes                                                                  |
+| Authentication     | JSON Web Tokens        | Stateless auth suited to a mobile client                                                                                                                                         |
+| Design             | Figma                  | Wireframes and screen designs                                                                                                                                                    |
+| Project management | ClickUp                | Backlog, sprints, ceremony records                                                                                                                                               |
 
 ---
 
@@ -118,7 +118,7 @@ EatMe/
 ### Prerequisites
 
 - Node.js version 18 or later, and npm
-- MySQL version 8 or later running locally. XAMPP is fine; start MySQL from its control panel
+- PostgreSQL version 14 or later running locally. Install it from [postgresql.org/download](https://www.postgresql.org/download/), or run `docker run --name eatme-db -e POSTGRES_PASSWORD=postgres -p 5432:5432 -d postgres:16`
 - The Expo Go app installed on your phone, from the Play Store or App Store
 - Your phone and your laptop on the **same Wi-Fi network**
 
@@ -142,7 +142,13 @@ npm run install:all
 
 ### 2. Create the database
 
-Create an empty database. In MySQL, or phpMyAdmin if you use XAMPP:
+Create an empty database:
+
+```bash
+createdb eatme
+```
+
+Or from `psql`, or pgAdmin if you prefer a GUI:
 
 ```sql
 CREATE DATABASE eatme;
@@ -154,7 +160,7 @@ CREATE DATABASE eatme;
 cd server && cp .env.example .env
 ```
 
-Open `server/.env` and set `DATABASE_URL` to match your MySQL user and password, and put a long random string in `JWT_SECRET`. Generate one with:
+Open `server/.env` and set `DATABASE_URL` to match your Postgres user and password, and put a long random string in `JWT_SECRET`. Generate one with:
 
 ```bash
 node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
@@ -230,7 +236,9 @@ Run these from the repository root.
 ### Troubleshooting
 
 - **The app cannot reach the API.** Your phone and laptop must be on the same Wi-Fi network, and `EXPO_PUBLIC_API_URL` must use the laptop's LAN IP, not `localhost`. Find it with `ipconfig` on Windows or `ifconfig` on macOS and Linux, or read it from the API's startup output. After changing `.env`, restart Expo with `npm run start:clear`; the value is baked into the bundle at build time.
-- **Prisma migration fails.** Confirm MySQL is running and that the database named in `DATABASE_URL` exists. XAMPP does not start MySQL automatically.
+- **Prisma migration fails.** Confirm Postgres is running (`pg_isready`) and that the database named in `DATABASE_URL` exists. Create it with `createdb eatme`.
+- **`password authentication failed for user "postgres"`.** The password in `DATABASE_URL` does not match the one set when Postgres was installed. It is not the same as your Windows password.
+- **`violates check constraint`.** The database rejected the write because a food item broke the packaged versus prepared expiry rule, or a quantity went out of range. Go through `urgency.service.ts` rather than writing the item fields directly.
 - **The API exits with "Invalid environment configuration".** A variable in `server/.env` is missing or too short. The message names it.
 - **`Cannot find module` after pulling.** Someone added a dependency. Run `npm run install:all` from the root.
 - **Your commit was rejected.** The message must match `type(scope): subject`, for example `feat(donation): add listing form`. See CONTRIBUTING.md section 2.
