@@ -118,7 +118,7 @@ EatMe/
 ### Prerequisites
 
 - Node.js version 18 or later, and npm
-- PostgreSQL version 14 or later running locally. Install it from [postgresql.org/download](https://www.postgresql.org/download/), or run `docker run --name eatme-db -e POSTGRES_PASSWORD=postgres -p 5432:5432 -d postgres:16`
+- Docker, to run PostgreSQL. On Windows use **Docker Engine inside WSL2**, not Docker Desktop. A native PostgreSQL 14+ install works too if you prefer`
 - The Expo Go app installed on your phone, from the Play Store or App Store
 - Your phone and your laptop on the **same Wi-Fi network**
 
@@ -140,15 +140,23 @@ Then install both sides:
 npm run install:all
 ```
 
-### 2. Create the database
+### 2. Start the database
 
-Create an empty database:
+From the repository root:
 
 ```bash
-createdb eatme
+npm run db:up
 ```
 
-Or from `psql`, or pgAdmin if you prefer a GUI:
+That starts PostgreSQL 16 from `docker-compose.yml` with the database, user and password already created. Data lives in a named Docker volume, so it survives restarts.
+
+**If port 5432 is already used by another project**, pick a different host port instead of stopping theirs, and use the same port in `server/.env`:
+
+```bash
+EATME_DB_PORT=5433 npm run db:up
+```
+
+Prefer a native PostgreSQL install? Create the database by hand instead and adjust `DATABASE_URL`:
 
 ```sql
 CREATE DATABASE eatme;
@@ -224,6 +232,10 @@ Run these from the repository root.
 
 | Script               | What it does                         |
 | -------------------- | ------------------------------------ |
+| `npm run db:up`      | Start PostgreSQL in Docker           |
+| `npm run db:down`    | Stop it, keeping the data            |
+| `npm run db:nuke`    | Stop it and delete the data volume   |
+| `npm run db:logs`    | Follow the database logs             |
 | `npm run dev:server` | Start the API with hot reload        |
 | `npm run dev:mobile` | Start Expo                           |
 | `npm run db:migrate` | Apply migrations                     |
@@ -236,8 +248,11 @@ Run these from the repository root.
 ### Troubleshooting
 
 - **The app cannot reach the API.** Your phone and laptop must be on the same Wi-Fi network, and `EXPO_PUBLIC_API_URL` must use the laptop's LAN IP, not `localhost`. Find it with `ipconfig` on Windows or `ifconfig` on macOS and Linux, or read it from the API's startup output. After changing `.env`, restart Expo with `npm run start:clear`; the value is baked into the bundle at build time.
-- **Prisma migration fails.** Confirm Postgres is running (`pg_isready`) and that the database named in `DATABASE_URL` exists. Create it with `createdb eatme`.
-- **`password authentication failed for user "postgres"`.** The password in `DATABASE_URL` does not match the one set when Postgres was installed. It is not the same as your Windows password.
+- **`P1001: Can't reach database server` even though the container is running.** Use `127.0.0.1` in `DATABASE_URL`, not `localhost`. Prisma's query engine tries the IPv6 address `::1` first and a container publishing on `0.0.0.0` does not answer there. This is the single most confusing failure in this setup.
+- **Prisma migration fails.** Confirm the container is up with `docker ps`, and that the port in `DATABASE_URL` matches what `db:up` published.
+- **`password authentication failed`.** The credentials in `DATABASE_URL` must match `docker-compose.yml`. If you changed one, change both.
+- **Port 5432 already in use.** Another project is using it. Start with `EATME_DB_PORT=5433 npm run db:up` and set the same port in `server/.env` rather than stopping the other container.
+- **On Windows with WSL2: containers run but Windows cannot reach them.** WSL's default networking does not forward container ports reliably. Add `networkingMode=mirrored` under `[wsl2]` in `C:\Users\<you>\.wslconfig`, then run `wsl --shutdown` and start WSL again. Note that WSL shuts the VM down when nothing is running inside it, which stops your containers; keep a terminal open in the distro, or set `vmIdleTimeout=-1`.
 - **`violates check constraint`.** The database rejected the write because a food item broke the packaged versus prepared expiry rule, or a quantity went out of range. Go through `urgency.service.ts` rather than writing the item fields directly.
 - **The API exits with "Invalid environment configuration".** A variable in `server/.env` is missing or too short. The message names it.
 - **`Cannot find module` after pulling.** Someone added a dependency. Run `npm run install:all` from the root.
