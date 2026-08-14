@@ -41,12 +41,18 @@ export interface UrgencyResult {
 }
 
 /**
- * Enforces the conditional NOT NULL that MySQL cannot express.
+ * Enforces the conditional expiry rule before it reaches the database.
  *
  * A packaged item must carry expiryDate and must not carry the prepared
  * columns. A prepared item is the mirror image. Getting this wrong is the
  * easiest way to end up with an item that has no expiry at all, which would
  * then sort as "safe" forever.
+ *
+ * Postgres enforces the same rule with a CHECK constraint
+ * (donation_items_packaged_expiry_check and its prepared twin, in the init
+ * migration). This function still runs first, because a constraint violation
+ * surfaces as an opaque 500 whereas this produces a message a donor can act on.
+ * The constraint is the backstop for anything that skips this path.
  */
 export function assertValidExpiryFields(input: ExpiryInput): void {
   const { category, expiryDate, preparedAt, safeWindowHours } = input;

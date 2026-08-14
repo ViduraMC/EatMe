@@ -45,11 +45,41 @@ export function errorHandler(
       sendError(res, 404, 'Not found');
       return;
     }
+    if (err.code === 'P2003') {
+      // Foreign key violation: pointing at a row that does not exist.
+      sendError(res, 400, 'That referenced record does not exist');
+      return;
+    }
+  }
+
+  /*
+   * A Postgres CHECK constraint violation (SQLSTATE 23514).
+   *
+   * Prisma has no dedicated error code for these, so it arrives as an unknown
+   * request error carrying the Postgres message. The service layer validates
+   * the same rules first and returns something readable, so reaching here means
+   * a code path skipped that validation. Report it as a 400 rather than a 500,
+   * and log it loudly because it points at a missing service call.
+   */
+  if (err instanceof Error && err.message.includes('violates check constraint')) {
+    const match = err.message.match(/"([a-z0-9_]+_check)"/);
+    console.error(
+      '[db] check constraint violated, a service call was skipped:',
+      err.message,
+    );
+    sendError(
+      res,
+      400,
+      match
+        ? `That change breaks a database rule (${match[1]})`
+        : 'That change breaks a database rule',
+    );
+    return;
   }
 
   if (err instanceof Prisma.PrismaClientInitializationError) {
     console.error('[db] could not connect:', err.message);
-    sendError(res, 503, 'The database is unavailable. Is MySQL running?');
+    sendError(res, 503, 'The database is unavailable. Is PostgreSQL running?');
     return;
   }
 

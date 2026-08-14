@@ -6,8 +6,9 @@ import { env, isProduction } from './env';
  *
  * "tsx watch" re-evaluates modules on every save. Without stashing the client
  * on globalThis, each reload would construct a new PrismaClient and open
- * another connection pool, and MySQL would start refusing connections after a
- * few minutes of editing.
+ * another connection pool. Postgres has a hard max_connections limit, usually
+ * 100, so a few minutes of editing would exhaust it and every query would start
+ * failing with "too many clients already".
  */
 const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
 

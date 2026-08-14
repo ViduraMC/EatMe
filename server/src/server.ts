@@ -22,14 +22,14 @@ function findLanAddress(): string | null {
 }
 
 async function start(): Promise<void> {
-  // Fail fast and loudly if MySQL is not up, rather than letting the first
+  // Fail fast and loudly if Postgres is not up, rather than letting the first
   // request be the thing that discovers it.
   try {
     await prisma.$connect();
     console.log('[db] connected');
   } catch (error) {
-    console.error('\n[db] could not connect to MySQL.');
-    console.error('     Check that MySQL is running and that DATABASE_URL in');
+    console.error('\n[db] could not connect to PostgreSQL.');
+    console.error('     Check that Postgres is running and that DATABASE_URL in');
     console.error('     server/.env points at a database that exists.\n');
     console.error(error);
     process.exit(1);
