@@ -1,0 +1,41 @@
+# Local development database for EatMe.
+#
+# Run it with Docker Engine inside WSL, not Docker Desktop:
+#   docker compose up -d
+#
+# The named volume lives under /var/lib/docker inside the WSL distro, so all
+# database data sits wherever that distro is stored, not on C:.
+#
+# If port 5432 is already taken by another project, override it rather than
+# stopping the other container:
+#   EATME_DB_PORT=5433 docker compose up -d
+# and set the same port in server/.env.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: eatme_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: eatme
+      POSTGRES_PASSWORD: eatme_dev_password
+      POSTGRES_DB: eatme
+      # Deterministic collation, so ORDER BY on food names sorts the same way
+      # on every member's machine.
+      POSTGRES_INITDB_ARGS: '--encoding=UTF8 --locale=C'
+    ports:
+      - '${EATME_DB_PORT:-5432}:5432'
+    volumes:
+      - eatme_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      # Prisma connecting before Postgres finishes its first-run init is the
+      # usual cause of a migration failing on a fresh machine.
+      test: ['CMD-SHELL', 'pg_isready -U eatme -d eatme']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+volumes:
+  eatme_pgdata:
+    name: eatme_pgdata

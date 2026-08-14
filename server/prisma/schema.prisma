@@ -1,0 +1,297 @@
+// EatMe database schema.
+//
+// This file is the source of truth for the database. docs/03-database-design.md
+// explains it in prose; if the two ever disagree, this file wins.
+//
+// Naming: Prisma fields are camelCase so the TypeScript reads naturally, and
+// each one is @map'd to the snake_case column named in the design document.
+// Tables are plural snake_case.
+//
+// Timestamps are timestamptz. This application's core rule is "how many hours
+// until this food expires", and a timestamp without a time zone is ambiguous
+// the moment the API and the phone disagree about where they are. Postgres
+// stores timestamptz in UTC and converts on the way out, which is what we want.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Enumerations (docs/03-database-design.md section 4)
+//
+// These become real Postgres enum types, so an invalid status cannot be written
+// even by a query that bypasses the API.
+// ---------------------------------------------------------------------------
+
+enum UserRole {
+  admin
+  coordinator
+  donor
+  recipient
+  driver
+}
+
+enum UserStatus {
+  active
+  inactive
+}
+
+enum ListingStatus {
+  open
+  partially_claimed
+  fully_claimed
+  expired
+  cancelled
+}
+
+enum ItemCategory {
+  packaged
+  prepared
+}
+
+enum ItemUnit {
+  kg
+  servings
+  loaves
+  packets
+  cans
+  litres
+}
+
+enum StorageType {
+  ambient
+  chilled
+  frozen
+}
+
+enum RequestStatus {
+  pending
+  accepted
+  rejected
+  cancelled
+}
+
+enum AssignmentStatus {
+  pending_driver
+  accepted
+  declined
+  in_transit
+  completed
+  cancelled
+}
+
+enum NotificationType {
+  new_request
+  request_accepted
+  request_rejected
+  driver_assigned
+  driver_declined
+  delivery_completed
+  food_urgent
+}
+
+// ---------------------------------------------------------------------------
+// Models
+// ---------------------------------------------------------------------------
+
+/// One table holds all five roles. Separate tables per role were rejected
+/// because every role shares the same login, contact and address fields, and a
+/// single table keeps the auth middleware simple.
+model User {
+  userId           Int        @id @default(autoincrement()) @map("user_id")
+  name             String     @db.VarChar(100)
+  email            String     @unique @db.VarChar(150)
+  passwordHash     String     @map("password_hash") @db.VarChar(255)
+  phone            String     @db.VarChar(20)
+  address          String     @db.Text
+  role             UserRole
+  organisationName String?    @map("organisation_name") @db.VarChar(150)
+  /// Drivers only in practice. The coordinator filters on this when choosing
+  /// who to assign a delivery to.
+  isAvailable      Boolean    @default(true) @map("is_available")
+  status           UserStatus @default(active)
+  createdAt        DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime   @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  listings               DonationListing[]
+  requests               DonationRequest[]
+  coordinatedAssignments DeliveryAssignment[] @relation("AssignmentCoordinator")
+  drivenAssignments      DeliveryAssignment[] @relation("AssignmentDriver")
+  notifications          Notification[]
+
+  /// Partial index: the coordinator only ever looks for drivers who are free.
+  /// Postgres can index just those rows, which keeps the index small.
+  @@index([role, isAvailable])
+  @@map("users")
+}
+
+/// A listing is a container. It carries no food attributes of its own; those
+/// live on DonationItem.
+model DonationListing {
+  listingId         Int           @id @default(autoincrement()) @map("listing_id")
+  donorId           Int           @map("donor_id")
+  title             String        @db.VarChar(150)
+  description       String?       @db.Text
+  pickupAddress     String        @map("pickup_address") @db.VarChar(255)
+  pickupWindowStart DateTime      @map("pickup_window_start") @db.Timestamptz(3)
+  pickupWindowEnd   DateTime      @map("pickup_window_end") @db.Timestamptz(3)
+  status            ListingStatus @default(open)
+  createdAt         DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime      @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  donor    User              @relation(fields: [donorId], references: [userId])
+  items    DonationItem[]
+  requests DonationRequest[]
+
+  @@index([donorId])
+  @@index([status])
+  @@map("donation_listings")
+}
+
+/// The conditional expiry rule is the most important thing in this schema.
+/// A packaged item uses expiryDate and leaves the three prepared columns null.
+/// A prepared item is the mirror image.
+///
+/// Unlike MySQL, Postgres can enforce this in the database with a CHECK
+/// constraint. Prisma cannot express CHECK constraints in this file, so the two
+/// constraints are added by hand at the end of the init migration. The service
+/// layer validates the same rule first so the user gets a readable message;
+/// the constraint is the backstop that catches anything written another way.
+model DonationItem {
+  itemId            Int          @id @default(autoincrement()) @map("item_id")
+  listingId         Int          @map("listing_id")
+  foodName          String       @map("food_name") @db.VarChar(120)
+  category          ItemCategory
+  quantity          Decimal      @db.Decimal(8, 2)
+  quantityRemaining Decimal      @map("quantity_remaining") @db.Decimal(8, 2)
+  unit              ItemUnit
+  storageType       StorageType  @map("storage_type")
+  /// Packaged only.
+  expiryDate        DateTime?    @map("expiry_date") @db.Timestamptz(3)
+  /// Prepared only.
+  preparedAt        DateTime?    @map("prepared_at") @db.Timestamptz(3)
+  /// Prepared only.
+  safeWindowHours   Int?         @map("safe_window_hours")
+  /// Prepared only. preparedAt + safeWindowHours, written by the service.
+  computedExpiry    DateTime?    @map("computed_expiry") @db.Timestamptz(3)
+  /// Stored, not computed at read time, so browse can ORDER BY it in SQL.
+  isUrgent          Boolean      @default(false) @map("is_urgent")
+  createdAt         DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime     @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  listing      DonationListing       @relation(fields: [listingId], references: [listingId], onDelete: Cascade)
+  requestItems DonationRequestItem[]
+
+  @@index([listingId])
+  /// Browse orders urgent first, then soonest expiry. One composite index
+  /// serves that whole ORDER BY.
+  @@index([isUrgent, computedExpiry])
+  @@index([expiryDate])
+  @@map("donation_items")
+}
+
+model DonationRequest {
+  requestId       Int           @id @default(autoincrement()) @map("request_id")
+  listingId       Int           @map("listing_id")
+  recipientId     Int           @map("recipient_id")
+  message         String?       @db.Text
+  status          RequestStatus @default(pending)
+  rejectionReason String?       @map("rejection_reason") @db.Text
+  respondedAt     DateTime?     @map("responded_at") @db.Timestamptz(3)
+  createdAt       DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime      @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  listing     DonationListing       @relation(fields: [listingId], references: [listingId])
+  recipient   User                  @relation(fields: [recipientId], references: [userId])
+  items       DonationRequestItem[]
+  assignments DeliveryAssignment[]
+
+  @@index([listingId])
+  @@index([recipientId])
+  @@index([status])
+  @@map("donation_requests")
+}
+
+/// A recipient does not request a whole listing, they request specific items in
+/// specific quantities. Without this junction table there is nowhere to store
+/// how much of which item was requested.
+model DonationRequestItem {
+  requestItemId     Int     @id @default(autoincrement()) @map("request_item_id")
+  requestId         Int     @map("request_id")
+  itemId            Int     @map("item_id")
+  quantityRequested Decimal @map("quantity_requested") @db.Decimal(8, 2)
+
+  request DonationRequest @relation(fields: [requestId], references: [requestId], onDelete: Cascade)
+  item    DonationItem    @relation(fields: [itemId], references: [itemId])
+
+  /// The same item cannot appear twice in one request.
+  @@unique([requestId, itemId])
+  @@index([itemId])
+  @@map("donation_request_items")
+}
+
+/// One accepted request can accumulate several assignment rows over time.
+/// When a driver declines, a NEW row is inserted rather than the old one being
+/// overwritten, so the decline and its reason survive in the history. Only one
+/// row will ever reach completed.
+///
+/// The pickup and dropoff confirmations live here as nullable timestamps rather
+/// than in their own tables: both were strictly 1:1 with the assignment, and a
+/// null timestamp already records "not confirmed yet".
+model DeliveryAssignment {
+  assignmentId  Int              @id @default(autoincrement()) @map("assignment_id")
+  requestId     Int              @map("request_id")
+  coordinatorId Int              @map("coordinator_id")
+  driverId      Int              @map("driver_id")
+  status        AssignmentStatus @default(pending_driver)
+  noteToDriver  String?          @map("note_to_driver") @db.Text
+  declineReason String?          @map("decline_reason") @db.Text
+  assignedAt    DateTime         @default(now()) @map("assigned_at") @db.Timestamptz(3)
+  respondedAt   DateTime?        @map("responded_at") @db.Timestamptz(3)
+
+  pickupDonorConfirmedAt      DateTime? @map("pickup_donor_confirmed_at") @db.Timestamptz(3)
+  pickupDriverConfirmedAt     DateTime? @map("pickup_driver_confirmed_at") @db.Timestamptz(3)
+  pickupNotes                 String?   @map("pickup_notes") @db.Text
+  dropoffDriverConfirmedAt    DateTime? @map("dropoff_driver_confirmed_at") @db.Timestamptz(3)
+  dropoffRecipientConfirmedAt DateTime? @map("dropoff_recipient_confirmed_at") @db.Timestamptz(3)
+  dropoffNotes                String?   @map("dropoff_notes") @db.Text
+
+  completedAt DateTime? @map("completed_at") @db.Timestamptz(3)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  request     DonationRequest @relation(fields: [requestId], references: [requestId])
+  // Two relations point at User, so both need an explicit name for Prisma to
+  // tell them apart.
+  coordinator User            @relation("AssignmentCoordinator", fields: [coordinatorId], references: [userId])
+  driver      User            @relation("AssignmentDriver", fields: [driverId], references: [userId])
+
+  @@index([requestId])
+  @@index([driverId, status])
+  @@index([status])
+  @@index([coordinatorId])
+  @@map("delivery_assignments")
+}
+
+/// In-app only. Push notifications are deferred to Sprint 4.
+model Notification {
+  notificationId    Int              @id @default(autoincrement()) @map("notification_id")
+  userId            Int              @map("user_id")
+  type              NotificationType
+  title             String           @db.VarChar(150)
+  body              String           @db.VarChar(255)
+  relatedEntityType String?          @map("related_entity_type") @db.VarChar(40)
+  relatedEntityId   Int?             @map("related_entity_id")
+  isRead            Boolean          @default(false) @map("is_read")
+  createdAt         DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [userId], onDelete: Cascade)
+
+  @@index([userId, isRead])
+  @@map("notifications")
+}
