@@ -10,15 +10,37 @@ import { prisma } from './config/prisma';
  * cannot reach the laptop on localhost, so EXPO_PUBLIC_API_URL has to use this
  * address.
  */
+const VIRTUAL_ADAPTER_PATTERN =
+  /vethernet|virtualbox|vboxnet|docker|wsl|hyper-v|tailscale|zerotier|vmware|utun|bridge|tap|tun/i;
+const PHYSICAL_ADAPTER_PATTERN = /wi-?fi|wlan|en0|eth/i;
+
 function findLanAddress(): string | null {
-  for (const addresses of Object.values(os.networkInterfaces())) {
+  const candidates: { name: string; address: string }[] = [];
+
+  for (const [name, addresses] of Object.entries(os.networkInterfaces())) {
+    if (VIRTUAL_ADAPTER_PATTERN.test(name)) continue;
     for (const address of addresses ?? []) {
       if (address.family === 'IPv4' && !address.internal) {
-        return address.address;
+        candidates.push({ name, address: address.address });
       }
     }
   }
-  return null;
+
+  if (candidates.length === 0) return null;
+
+  const preferred = candidates.find((c) => PHYSICAL_ADAPTER_PATTERN.test(c.name));
+  const chosen = preferred ?? candidates[0];
+
+  if (candidates.length > 1) {
+    const others = candidates.filter((c) => c !== chosen);
+    console.log(
+      `  (multiple network interfaces found, using "${chosen?.name}"; also saw: ${others
+        .map((c) => `${c.name}=${c.address}`)
+        .join(', ')})`,
+    );
+  }
+
+  return chosen.address;
 }
 
 async function start(): Promise<void> {
