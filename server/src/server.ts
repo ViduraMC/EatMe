@@ -34,13 +34,13 @@ function findLanAddress(): string | null {
   if (candidates.length > 1) {
     const others = candidates.filter((c) => c !== chosen);
     console.log(
-      `  (multiple network interfaces found, using "${chosen?.name}"; also saw: ${others
+      `  (multiple network interfaces found, using "${chosen!.name}"; also saw: ${others
         .map((c) => `${c.name}=${c.address}`)
         .join(', ')})`,
     );
   }
 
-  return chosen.address;
+  return chosen!.address;
 }
 
 async function start(): Promise<void> {
