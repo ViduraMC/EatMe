@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import authRoutes from './auth.routes';
+import donationRoutes from './donation.routes';
 import { sendSuccess } from '../utils/apiResponse';
 
 const router = Router();
@@ -20,11 +21,11 @@ router.get('/health', (_req, res) => {
 });
 
 router.use('/auth', authRoutes);
+router.use('/donations', donationRoutes);
 
 /*
  * Module routes are mounted here as each owner builds them:
  *
- *   router.use('/donations',   donationRoutes);   // Vidura
  *   router.use('/requests',    requestRoutes);    // Haritha
  *   router.use('/assignments', assignmentRoutes); // Kaushal
  *   router.use('/driver',      driverRoutes);     // Lakkhana
