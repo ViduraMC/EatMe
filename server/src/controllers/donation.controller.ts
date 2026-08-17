@@ -143,7 +143,7 @@ export async function createListing(req: Request, res: Response): Promise<void> 
     })),
   });
 
-  sendSuccess(res, { listing }, 201);
+  sendSuccess(res, { listing: donationService.presentListing(listing) }, 201);
 }
 
 const browseQuerySchema = z.object({
@@ -165,19 +165,22 @@ export async function browseListings(req: Request, res: Response): Promise<void>
   }
 
   const result = await donationService.browseListings(parsed.data);
-  sendSuccess(res, result);
+  sendSuccess(res, {
+    ...result,
+    listings: result.listings.map(donationService.presentListing),
+  });
 }
 
 /** GET /api/donations/mine */
 export async function listMyListings(req: Request, res: Response): Promise<void> {
   const listings = await donationService.listDonorListings(req.user!.userId);
-  sendSuccess(res, { listings });
+  sendSuccess(res, { listings: listings.map(donationService.presentListing) });
 }
 
 /** GET /api/donations/:id */
 export async function getListing(req: Request, res: Response): Promise<void> {
   const listing = await donationService.getListingById(parseListingId(req));
-  sendSuccess(res, { listing });
+  sendSuccess(res, { listing: donationService.presentListing(listing) });
 }
 
 /** PUT /api/donations/:id */
@@ -188,7 +191,7 @@ export async function updateListing(req: Request, res: Response): Promise<void> 
     req.user!.userId,
     input,
   );
-  sendSuccess(res, { listing });
+  sendSuccess(res, { listing: donationService.presentListing(listing) });
 }
 
 /** DELETE /api/donations/:id  (soft cancel) */
@@ -197,5 +200,5 @@ export async function cancelListing(req: Request, res: Response): Promise<void> 
     userId: req.user!.userId,
     role: req.user!.role,
   });
-  sendSuccess(res, { listing });
+  sendSuccess(res, { listing: donationService.presentListing(listing) });
 }

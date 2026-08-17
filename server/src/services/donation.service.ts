@@ -1,7 +1,12 @@
 import { Prisma, type ListingStatus } from '@prisma/client';
 import { prisma } from '../config/prisma';
 import { ApiError } from '../utils/apiError';
-import { buildExpiryFields, type ExpiryInput } from './urgency.service';
+import {
+  buildExpiryFields,
+  evaluateUrgency,
+  type ExpiryInput,
+  type UrgencyLevel,
+} from './urgency.service';
 
 /**
  * Donation and Food Listing business logic. Owner: Vidura.
@@ -54,6 +59,45 @@ const listingInclude = {
 export type ListingWithItems = Prisma.DonationListingGetPayload<{
   include: typeof listingInclude;
 }>;
+
+/**
+ * Adds urgencyLevel and effectiveExpiry to each item before it goes out.
+ *
+ * The stored is_urgent column is a boolean, but the app needs to tell critical
+ * from urgent to pick the right colour. Deriving that on the client would mean
+ * copying the 6 and 48 hour thresholds into the mobile code, where they would
+ * eventually drift from urgency.service.ts and the phone would show green for
+ * food the server considers critical. Sending it is the safer side to compute
+ * on.
+ *
+ * Unlike evaluateUrgency this never throws. A row that somehow has no usable
+ * expiry is reported as critical rather than crashing a list of otherwise fine
+ * listings, and the caller can still see something is wrong with it.
+ */
+function presentItem(item: ListingWithItems['items'][number]) {
+  try {
+    const { level, effectiveExpiry } = evaluateUrgency({
+      category: item.category,
+      expiryDate: item.expiryDate,
+      preparedAt: item.preparedAt,
+      safeWindowHours: item.safeWindowHours,
+    });
+    return { ...item, urgencyLevel: level as UrgencyLevel, effectiveExpiry };
+  } catch {
+    return {
+      ...item,
+      urgencyLevel: 'critical' as UrgencyLevel,
+      effectiveExpiry: item.computedExpiry ?? item.expiryDate ?? null,
+    };
+  }
+}
+
+/** Shapes a listing for the wire. Every donation response goes through this. */
+export function presentListing(listing: ListingWithItems) {
+  return { ...listing, items: listing.items.map(presentItem) };
+}
+
+export type PresentedListing = ReturnType<typeof presentListing>;
 
 /**
  * Validates the pickup window.
@@ -215,6 +259,17 @@ export async function browseListings(filters: BrowseFilters): Promise<{
   const conditions = Prisma.sql`
     l.status IN ('open', 'partially_claimed')
     AND i.quantity_remaining > 0
+    /*
+     * Hide food that has already expired.
+     *
+     * docs/03 section 6 says a scheduled check flips listing.status to
+     * expired once the pickup window passes, but no scheduler exists yet, so
+     * without this an item that spoiled days ago still appears as available.
+     * Offering a charity expired food is the worst failure this system can
+     * have, so browse filters on the real expiry rather than waiting for a
+     * status that nothing currently writes.
+     */
+    AND COALESCE(i.computed_expiry, i.expiry_date) > now()
     ${
       searchPattern
         ? Prisma.sql`AND (l.title ILIKE ${searchPattern}
