@@ -24,10 +24,10 @@ router.patch(
   asyncHandler(updateAvailability),
 );
 router.get('/stats', asyncHandler(getStats));
-router.get('/assignments', asyncHandler(getAssignment));
+router.get('/assignments', asyncHandler(listAssignments));
 router.get('/assignments/:id', asyncHandler(getAssignment));
-router.post('/assignments/:id/accept', asyncHandler(acceptAssignment));
-router.post(
+router.put('/assignments/:id/accept', asyncHandler(acceptAssignment));
+router.put(
   '/assignments/:id/decline',
   validateBody(declineAssignmentSchema),
   asyncHandler(declineAssignment),
