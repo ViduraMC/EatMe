@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import authRoutes from './auth.routes';
+import driverRoutes from './driver.routes';
 import { sendSuccess } from '../utils/apiResponse';
 
 const router = Router();
@@ -20,6 +21,7 @@ router.get('/health', (_req, res) => {
 });
 
 router.use('/auth', authRoutes);
+router.use('/driver', driverRoutes);
 
 /*
  * Module routes are mounted here as each owner builds them:
