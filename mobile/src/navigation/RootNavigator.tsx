@@ -8,7 +8,10 @@ import { colours, fontSize, fontWeight } from '../constants/theme';
 
 import { LoginScreen } from '../screens/auth/LoginScreen';
 import { RegisterScreen } from '../screens/auth/RegisterScreen';
-import { DonorHomeScreen } from '../screens/donor/DonorHomeScreen';
+import { MyListingsScreen } from '../screens/donor/MyListingsScreen';
+import { CreateListingScreen } from '../screens/donor/CreateListingScreen';
+import { AddItemsScreen } from '../screens/donor/AddItemsScreen';
+import { ListingDetailScreen } from '../screens/donor/ListingDetailScreen';
 import { RecipientHomeScreen } from '../screens/recipient/RecipientHomeScreen';
 import { CoordinatorHomeScreen } from '../screens/coordinator/CoordinatorHomeScreen';
 import { DriverHomeScreen } from '../screens/driver/DriverHomeScreen';
@@ -62,14 +65,29 @@ function AuthNavigator() {
   );
 }
 
-/** Vidura adds donor screens here. */
+/** Donation and Food Listing. Owner: Vidura. */
 function DonorNavigator() {
   return (
     <DonorStack.Navigator screenOptions={screenOptions}>
       <DonorStack.Screen
-        name="DonorHome"
-        component={DonorHomeScreen}
-        options={{ title: 'My Donations' }}
+        name="MyListings"
+        component={MyListingsScreen}
+        options={{ title: 'My Listings' }}
+      />
+      <DonorStack.Screen
+        name="CreateListing"
+        component={CreateListingScreen}
+        options={{ title: 'Create Listing' }}
+      />
+      <DonorStack.Screen
+        name="AddItems"
+        component={AddItemsScreen}
+        options={{ title: 'Add Food Items' }}
+      />
+      <DonorStack.Screen
+        name="ListingDetail"
+        component={ListingDetailScreen}
+        options={{ title: 'Listing' }}
       />
     </DonorStack.Navigator>
   );

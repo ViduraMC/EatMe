@@ -10,12 +10,27 @@ export type AuthStackParamList = {
   Register: undefined;
 };
 
-/** Vidura. Donation and Listing. */
+/**
+ * Vidura. Donation and Listing.
+ *
+ * Creating a listing is a two step flow, matching the wireframes: the details
+ * are collected on CreateListing and handed to AddItems, which collects the
+ * food items and publishes both together. The details travel as plain strings
+ * so the params stay serialisable.
+ */
 export type DonorStackParamList = {
-  DonorHome: undefined;
-  // CreateListing: undefined;
-  // MyListings: undefined;
-  // ListingDetail: { listingId: number };
+  MyListings: undefined;
+  CreateListing: undefined;
+  AddItems: {
+    title: string;
+    description: string;
+    pickupAddress: string;
+    /** ISO 8601. */
+    pickupWindowStart: string;
+    /** ISO 8601. */
+    pickupWindowEnd: string;
+  };
+  ListingDetail: { listingId: number };
 };
 
 /** Haritha. Food Requests. */
