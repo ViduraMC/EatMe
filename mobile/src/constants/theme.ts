@@ -78,7 +78,7 @@ export const pillTone = {
   negative: { background: '#FEE2E2', text: '#B91C1C' },
 } as const;
 
-export type pillTone = keyof typeof pillTone;
+export type PillTone = keyof typeof pillTone;
 
 //Pale red panel behind decline reason on the history screen.
 export const surfaceDanger = '#FEF2F2';
