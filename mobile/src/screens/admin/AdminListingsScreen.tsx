@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -45,6 +46,10 @@ interface AdminListing {
 
 type ListingsResponse = ApiSuccess<{
   listings: AdminListing[];
+}>;
+
+type CancelListingResponse = ApiSuccess<{
+  listing: AdminListing;
 }>;
 
 type StatusFilter = 'all' | ListingStatus;
@@ -134,6 +139,7 @@ export function AdminListingsScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [moderatingListingId, setModeratingListingId] = useState<number | null>(null);
 
   const loadListings = useCallback(async (showFullLoader = false) => {
     if (showFullLoader) {
@@ -162,6 +168,62 @@ export function AdminListingsScreen() {
     setIsRefreshing(true);
     void loadListings();
   }, [loadListings]);
+
+  const cancelListing = useCallback(async (listing: AdminListing) => {
+    setModeratingListingId(listing.listingId);
+
+    try {
+      const response = await api.patch<CancelListingResponse>(
+        `/admin/listings/${listing.listingId}/cancel`,
+      );
+
+      const updatedListing = response.data.data.listing;
+
+      setListings((currentListings) =>
+        currentListings.map((currentListing) =>
+          currentListing.listingId === updatedListing.listingId
+            ? updatedListing
+            : currentListing,
+        ),
+      );
+
+      Alert.alert(
+        'Listing cancelled',
+        `"${listing.title}" has been cancelled successfully.`,
+      );
+    } catch (error) {
+      Alert.alert('Could not cancel listing', getErrorMessage(error));
+    } finally {
+      setModeratingListingId(null);
+    }
+  }, []);
+
+  const handleCancelListing = useCallback(
+    (listing: AdminListing) => {
+      if (moderatingListingId !== null) {
+        return;
+      }
+
+      Alert.alert(
+        'Cancel donation listing?',
+        `This will stop "${listing.title}" from remaining open on the platform. The listing record and its history will be preserved.`,
+        [
+          {
+            text: 'Keep listing',
+            style: 'cancel',
+          },
+          {
+            text: 'Cancel listing',
+            style: 'destructive',
+            onPress: () => {
+              void cancelListing(listing);
+            },
+          },
+        ],
+      );
+    },
+    [cancelListing, moderatingListingId],
+  );
 
   const filteredListings = useMemo(() => {
     const normalisedQuery = searchQuery.trim().toLowerCase();
@@ -217,8 +279,8 @@ export function AdminListingsScreen() {
         <Text style={styles.title}>Donation Listings</Text>
 
         <Text style={styles.subtitle}>
-          Review donation activity across the platform and monitor each listing's current
-          status.
+          Review donation activity across the platform and moderate open listings when
+          necessary.
         </Text>
       </View>
 
@@ -318,6 +380,8 @@ export function AdminListingsScreen() {
       {filteredListings.map((listing) => {
         const statusStyle = getStatusStyle(listing.status);
         const donorDisplayName = listing.donor.organisationName || listing.donor.name;
+        const isModerating = moderatingListingId === listing.listingId;
+        const moderationDisabled = moderatingListingId !== null;
 
         return (
           <View key={listing.listingId} style={styles.listingCard}>
@@ -396,6 +460,35 @@ export function AdminListingsScreen() {
                 <Text style={styles.metadataLabel}>Created</Text>
               </View>
             </View>
+
+            {listing.status === 'open' ? (
+              <View style={styles.moderationSection}>
+                <Text style={styles.moderationLabel}>ADMIN MODERATION</Text>
+
+                <Text style={styles.moderationText}>
+                  Cancel this listing if it should no longer remain available on the
+                  platform.
+                </Text>
+
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`Cancel ${listing.title}`}
+                  disabled={moderationDisabled}
+                  onPress={() => handleCancelListing(listing)}
+                  style={({ pressed }) => [
+                    styles.cancelListingButton,
+                    moderationDisabled && styles.buttonDisabled,
+                    pressed && !moderationDisabled && styles.buttonPressed,
+                  ]}
+                >
+                  {isModerating ? (
+                    <ActivityIndicator size="small" color={colours.textInverse} />
+                  ) : (
+                    <Text style={styles.cancelListingButtonText}>Cancel listing</Text>
+                  )}
+                </Pressable>
+              </View>
+            ) : null}
           </View>
         );
       })}
@@ -665,6 +758,40 @@ const styles = StyleSheet.create({
     marginTop: spacing.xs,
     fontSize: fontSize.label,
     color: colours.textSecondary,
+  },
+  moderationSection: {
+    marginTop: spacing.md,
+    paddingTop: spacing.md,
+    borderTopWidth: layout.borderWidth,
+    borderTopColor: colours.border,
+  },
+  moderationLabel: {
+    fontSize: fontSize.label,
+    fontWeight: fontWeight.semibold,
+    color: colours.critical,
+    letterSpacing: 0.5,
+  },
+  moderationText: {
+    marginTop: spacing.xs,
+    fontSize: fontSize.secondary,
+    lineHeight: 20,
+    color: colours.textSecondary,
+  },
+  cancelListingButton: {
+    minHeight: layout.controlHeight,
+    marginTop: spacing.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: layout.radius,
+    backgroundColor: colours.critical,
+  },
+  cancelListingButtonText: {
+    fontSize: fontSize.secondary,
+    fontWeight: fontWeight.semibold,
+    color: colours.textInverse,
+  },
+  buttonDisabled: {
+    opacity: 0.55,
   },
   buttonPressed: {
     opacity: 0.8,

@@ -1,11 +1,14 @@
 import { Router } from 'express';
+
 import {
   adminAssignments,
+  adminCancelListing,
   adminListings,
   adminRequests,
   adminStats,
   adminUsers,
 } from '../controllers/admin.controller';
+
 import { authenticate } from '../middleware/auth';
 import { requireRole } from '../middleware/requireRole';
 import { asyncHandler } from '../utils/asyncHandler';
@@ -17,6 +20,13 @@ router.get('/stats', authenticate, requireRole('admin'), asyncHandler(adminStats
 router.get('/users', authenticate, requireRole('admin'), asyncHandler(adminUsers));
 
 router.get('/listings', authenticate, requireRole('admin'), asyncHandler(adminListings));
+
+router.patch(
+  '/listings/:listingId/cancel',
+  authenticate,
+  requireRole('admin'),
+  asyncHandler(adminCancelListing),
+);
 
 router.get('/requests', authenticate, requireRole('admin'), asyncHandler(adminRequests));
 

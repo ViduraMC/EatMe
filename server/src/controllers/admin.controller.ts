@@ -1,5 +1,6 @@
 import type { Request, Response } from 'express';
 import {
+  cancelAdminListing,
   getAdminAssignments,
   getAdminListings,
   getAdminRequests,
@@ -27,6 +28,23 @@ export async function adminListings(_req: Request, res: Response): Promise<void>
   const listings = await getAdminListings();
 
   sendSuccess(res, { listings });
+}
+
+/** PATCH /api/admin/listings/:listingId/cancel */
+export async function adminCancelListing(req: Request, res: Response): Promise<void> {
+  const listingId = Number(req.params.listingId);
+
+  if (!Number.isInteger(listingId) || listingId <= 0) {
+    res.status(400).json({
+      success: false,
+      message: 'Invalid donation listing ID',
+    });
+    return;
+  }
+
+  const listing = await cancelAdminListing(listingId);
+
+  sendSuccess(res, { listing });
 }
 
 /** GET /api/admin/requests */

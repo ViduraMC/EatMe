@@ -1,4 +1,5 @@
 import { prisma } from '../config/prisma';
+import { ApiError } from '../utils/apiError';
 
 export async function getAdminStats() {
   const [
@@ -218,6 +219,58 @@ export async function getAdminUsers() {
           requests: true,
           coordinatedAssignments: true,
           drivenAssignments: true,
+        },
+      },
+    },
+  });
+}
+
+export async function cancelAdminListing(listingId: number) {
+  const listing = await prisma.donationListing.findUnique({
+    where: {
+      listingId,
+    },
+    select: {
+      listingId: true,
+      status: true,
+    },
+  });
+
+  if (!listing) {
+    throw ApiError.notFound('Donation listing not found');
+  }
+
+  if (listing.status === 'cancelled') {
+    throw ApiError.conflict('This donation listing is already cancelled');
+  }
+
+  if (listing.status !== 'open') {
+    throw ApiError.conflict(
+      'Only open donation listings can be cancelled by an administrator',
+    );
+  }
+
+  return prisma.donationListing.update({
+    where: {
+      listingId,
+    },
+    data: {
+      status: 'cancelled',
+    },
+    include: {
+      donor: {
+        select: {
+          userId: true,
+          name: true,
+          email: true,
+          phone: true,
+          organisationName: true,
+          status: true,
+        },
+      },
+      _count: {
+        select: {
+          requests: true,
         },
       },
     },

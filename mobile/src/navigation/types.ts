@@ -41,4 +41,6 @@ export type DriverStackParamList = {
 export type AdminStackParamList = {
   AdminHome: undefined;
   AdminListings: undefined;
+  AdminRequests: undefined;
+  AdminAssignments: undefined;
 };

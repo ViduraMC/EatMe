@@ -210,9 +210,16 @@ export function AdminHomeScreen({ navigation }: Props) {
               </Text>
             </View>
 
-            <View style={styles.pendingBadge}>
-              <Text style={styles.pendingBadgeText}>Monitoring available</Text>
-            </View>
+            <Pressable
+              accessibilityRole="button"
+              style={({ pressed }) => [
+                styles.primaryButton,
+                pressed && styles.buttonPressed,
+              ]}
+              onPress={() => navigation.navigate('AdminRequests')}
+            >
+              <Text style={styles.primaryButtonText}>View requests</Text>
+            </Pressable>
           </View>
 
           <View style={styles.activityCard}>
@@ -230,9 +237,16 @@ export function AdminHomeScreen({ navigation }: Props) {
               </Text>
             </View>
 
-            <View style={styles.pendingBadge}>
-              <Text style={styles.pendingBadgeText}>Monitoring available</Text>
-            </View>
+            <Pressable
+              accessibilityRole="button"
+              style={({ pressed }) => [
+                styles.primaryButton,
+                pressed && styles.buttonPressed,
+              ]}
+              onPress={() => navigation.navigate('AdminAssignments')}
+            >
+              <Text style={styles.primaryButtonText}>View deliveries</Text>
+            </Pressable>
           </View>
         </>
       ) : null}
@@ -411,18 +425,6 @@ const styles = StyleSheet.create({
     fontSize: fontSize.body,
     fontWeight: fontWeight.semibold,
     color: colours.textInverse,
-  },
-  pendingBadge: {
-    alignSelf: 'flex-start',
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
-    borderRadius: layout.radius,
-    backgroundColor: colours.surface,
-  },
-  pendingBadgeText: {
-    fontSize: fontSize.label,
-    fontWeight: fontWeight.semibold,
-    color: colours.textSecondary,
   },
   buttonPressed: {
     opacity: 0.8,
