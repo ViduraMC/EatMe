@@ -13,6 +13,7 @@ import { RecipientHomeScreen } from '../screens/recipient/RecipientHomeScreen';
 import { CoordinatorHomeScreen } from '../screens/coordinator/CoordinatorHomeScreen';
 import { DriverHomeScreen } from '../screens/driver/DriverHomeScreen';
 import { AdminHomeScreen } from '../screens/admin/AdminHomeScreen';
+import { AdminListingsScreen } from '../screens/admin/AdminListingsScreen';
 
 import type {
   AdminStackParamList,
@@ -122,6 +123,12 @@ function AdminNavigator() {
         name="AdminHome"
         component={AdminHomeScreen}
         options={{ title: 'Administration' }}
+      />
+
+      <AdminStack.Screen
+        name="AdminListings"
+        component={AdminListingsScreen}
+        options={{ title: 'Donation Listings' }}
       />
     </AdminStack.Navigator>
   );

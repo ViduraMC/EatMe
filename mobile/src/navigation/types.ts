@@ -40,5 +40,5 @@ export type DriverStackParamList = {
 /** Naily. Administration. */
 export type AdminStackParamList = {
   AdminHome: undefined;
-  // AllListings: undefined;
+  AdminListings: undefined;
 };
