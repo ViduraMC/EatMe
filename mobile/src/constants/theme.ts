@@ -71,6 +71,18 @@ export const urgencyColour = {
   safe: colours.safe,
 } as const;
 
+export const pillTone = {
+  neutral: { background: colours.surface, text: colours.textSecondary },
+  positive: { background: '#DCFCE7', text: '#166534' },
+  warning: { background: '#FEF3C7', text: '#B45309' },
+  negative: { background: '#FEE2E2', text: '#B91C1C' },
+} as const;
+
+export type pillTone = keyof typeof pillTone;
+
+//Pale red panel behind decline reason on the history screen.
+export const surfaceDanger = '#FEF2F2';
+
 export type UrgencyLevel = keyof typeof urgencyColour;
 
 export const theme = {
@@ -80,4 +92,5 @@ export const theme = {
   spacing,
   layout,
   urgencyColour,
+  pillTone,
 } as const;
