@@ -60,10 +60,16 @@ export function ListingDetailScreen({ navigation, route }: Props) {
     setCancelling(true);
     setError(null);
     try {
-      setListing(await cancelListing(listingId));
+      await cancelListing(listingId);
+      /*
+       * Back to My Listings rather than staying here. The listing is not gone,
+       * it is cancelled, and seeing it sitting in the list with a cancelled
+       * pill is what makes the soft cancel obvious. My Listings reloads on
+       * focus, so navigating back is also the refresh.
+       */
+      navigation.navigate('MyListings');
     } catch (err) {
       setError(getErrorMessage(err));
-    } finally {
       setCancelling(false);
     }
   }

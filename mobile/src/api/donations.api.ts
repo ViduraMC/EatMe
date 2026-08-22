@@ -5,6 +5,12 @@ import type {
   DonationListing,
   UpdateListingPayload,
 } from '../types/donation';
+import type {
+  ConfirmPickupPayload,
+  DonorAssignment,
+  IncomingRequest,
+  RequestStatus,
+} from '../types/assignment';
 
 /**
  * /api/donations. Owner: Vidura.
@@ -94,4 +100,50 @@ export async function browseListings(params: BrowseParams = {}): Promise<{
     },
   });
   return data.data;
+}
+
+// ---------------------------------------------------------------------------
+// Sprint 2: handover confirmation and read-only incoming requests
+// ---------------------------------------------------------------------------
+
+/**
+ * Requests made against the signed-in donor's listings.
+ *
+ * READ ONLY by design. There is deliberately no accept or reject function
+ * here: the Donation Coordinator decides, not the donor. Do not add one.
+ */
+export async function fetchIncomingRequests(
+  status?: RequestStatus,
+): Promise<IncomingRequest[]> {
+  const { data } = await api.get<ApiSuccess<{ requests: IncomingRequest[] }>>(
+    '/donations/requests/incoming',
+    { params: status ? { status } : {} },
+  );
+  return data.data.requests;
+}
+
+/** Assignments waiting on this donor to confirm the food changed hands. */
+export async function fetchPendingConfirmations(): Promise<DonorAssignment[]> {
+  const { data } = await api.get<ApiSuccess<{ assignments: DonorAssignment[] }>>(
+    '/donations/assignments/pending-confirmation',
+  );
+  return data.data.assignments;
+}
+
+/**
+ * Confirms the donor's side of a pickup.
+ *
+ * The assignment only becomes in_transit once the driver has confirmed too,
+ * and that decision is made on the server. Read the status off the response
+ * rather than assuming it changed.
+ */
+export async function confirmPickup(
+  assignmentId: number,
+  payload: ConfirmPickupPayload = {},
+): Promise<DonorAssignment> {
+  const { data } = await api.patch<ApiSuccess<{ assignment: DonorAssignment }>>(
+    `/donations/assignments/${assignmentId}/confirm-pickup`,
+    payload,
+  );
+  return data.data.assignment;
 }

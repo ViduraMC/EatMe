@@ -2,10 +2,14 @@ import { Router } from 'express';
 import {
   browseListings,
   cancelListing,
+  confirmPickup,
+  confirmPickupSchema,
   createListing,
   createListingSchema,
   getListing,
+  listIncomingRequests,
   listMyListings,
+  listPendingConfirmations,
   updateListing,
   updateListingSchema,
 } from '../controllers/donation.controller';
@@ -24,6 +28,39 @@ import { asyncHandler } from '../utils/asyncHandler';
 const router = Router();
 
 router.use(authenticate);
+
+/*
+ * Sprint 2 additions.
+ *
+ * These are declared before the generic /:id routes below, because Express
+ * matches in declaration order and would otherwise read "assignments" and
+ * "requests" as listing ids.
+ *
+ * They live under /api/donations rather than /api/assignments on purpose: the
+ * assignment routes belong to the coordinator module, and this is the donor's
+ * side of a shared record. Nothing here writes a coordinator or driver owned
+ * column.
+ */
+
+// Read only. The Donation Coordinator accepts and rejects, not the donor.
+router.get(
+  '/requests/incoming',
+  requireRole('donor'),
+  asyncHandler(listIncomingRequests),
+);
+
+router.get(
+  '/assignments/pending-confirmation',
+  requireRole('donor'),
+  asyncHandler(listPendingConfirmations),
+);
+
+router.patch(
+  '/assignments/:assignmentId/confirm-pickup',
+  requireRole('donor'),
+  validateBody(confirmPickupSchema),
+  asyncHandler(confirmPickup),
+);
 
 // Order matters: /mine must be declared before /:id, otherwise Express matches
 // "mine" as an id and the request 400s on a non-numeric id.

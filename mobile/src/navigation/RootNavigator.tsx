@@ -12,6 +12,8 @@ import { MyListingsScreen } from '../screens/donor/MyListingsScreen';
 import { CreateListingScreen } from '../screens/donor/CreateListingScreen';
 import { AddItemsScreen } from '../screens/donor/AddItemsScreen';
 import { ListingDetailScreen } from '../screens/donor/ListingDetailScreen';
+import { IncomingRequestsScreen } from '../screens/donor/IncomingRequestsScreen';
+import { ConfirmPickupScreen } from '../screens/donor/ConfirmPickupScreen';
 import { RecipientHomeScreen } from '../screens/recipient/RecipientHomeScreen';
 import { CoordinatorHomeScreen } from '../screens/coordinator/CoordinatorHomeScreen';
 import { DriverHomeScreen } from '../screens/driver/DriverHomeScreen';
@@ -88,6 +90,16 @@ function DonorNavigator() {
         name="ListingDetail"
         component={ListingDetailScreen}
         options={{ title: 'Listing' }}
+      />
+      <DonorStack.Screen
+        name="IncomingRequests"
+        component={IncomingRequestsScreen}
+        options={{ title: 'Requests' }}
+      />
+      <DonorStack.Screen
+        name="ConfirmPickup"
+        component={ConfirmPickupScreen}
+        options={{ title: 'Confirm Pickup' }}
       />
     </DonorStack.Navigator>
   );

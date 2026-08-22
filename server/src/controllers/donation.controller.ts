@@ -202,3 +202,71 @@ export async function cancelListing(req: Request, res: Response): Promise<void> 
   });
   sendSuccess(res, { listing: donationService.presentListing(listing) });
 }
+
+// ---------------------------------------------------------------------------
+// Sprint 2: handover confirmation and read-only incoming requests
+// ---------------------------------------------------------------------------
+
+export const confirmPickupSchema = z.object({
+  notes: z
+    .string()
+    .trim()
+    .max(500, 'Notes must be under 500 characters')
+    .optional()
+    .nullable(),
+});
+
+/** Parses :assignmentId and rejects anything that is not a positive integer. */
+function parseAssignmentId(req: Request): number {
+  const id = Number(req.params.assignmentId);
+  if (!Number.isInteger(id) || id <= 0) {
+    throw ApiError.badRequest('That delivery id is not valid');
+  }
+  return id;
+}
+
+/** GET /api/donations/assignments/pending-confirmation */
+export async function listPendingConfirmations(
+  req: Request,
+  res: Response,
+): Promise<void> {
+  const assignments = await donationService.listAssignmentsPendingDonorConfirmation(
+    req.user!.userId,
+  );
+  sendSuccess(res, { assignments });
+}
+
+/** PATCH /api/donations/assignments/:assignmentId/confirm-pickup */
+export async function confirmPickup(req: Request, res: Response): Promise<void> {
+  const input = req.body as z.infer<typeof confirmPickupSchema>;
+  const assignment = await donationService.confirmPickupAsDonor(
+    parseAssignmentId(req),
+    req.user!.userId,
+    { notes: input?.notes ?? null },
+  );
+  sendSuccess(res, { assignment });
+}
+
+const incomingQuerySchema = z.object({
+  status: z.enum(['pending', 'accepted', 'rejected', 'cancelled']).optional(),
+});
+
+/**
+ * GET /api/donations/requests/incoming
+ *
+ * READ ONLY. The donor sees who has asked for their food; the Donation
+ * Coordinator is the one who accepts or rejects. There is deliberately no
+ * write counterpart to this endpoint in the donation module.
+ */
+export async function listIncomingRequests(req: Request, res: Response): Promise<void> {
+  const parsed = incomingQuerySchema.safeParse(req.query);
+  if (!parsed.success) {
+    throw ApiError.badRequest('Invalid filter', parsed.error.flatten().fieldErrors);
+  }
+
+  const requests = await donationService.listIncomingRequests(
+    req.user!.userId,
+    parsed.data.status,
+  );
+  sendSuccess(res, { requests });
+}
