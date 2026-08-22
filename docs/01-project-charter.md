@@ -197,7 +197,7 @@ The project is successful if the following are all true at the end of Sprint 2:
 
 1. A donor can create a listing with multiple food items from a phone, and the system calculates expiry and urgency correctly for both packaged and prepared food.
 2. A recipient can browse those listings, request specific items, and see the status of that request change.
-3. A donor can accept or reject that request and the listing status updates accordingly.
+3. The Donation Coordinator can accept or reject that request and the listing status updates accordingly, and the donor can confirm the handover when the driver collects the food.
 4. The coordinator, driver and administrator dashboards exist and display data from the API, even if their full workflows are completed in Sprint 3.
 5. The application installs and runs on a physical device and the demonstration is given on a real phone rather than an emulator.
 6. ClickUp and GitHub together show consistent, individually attributable work from all five members across Sprints 0, 1 and 2.

@@ -27,7 +27,19 @@ All routes except `/auth/*` require a valid JWT in the `Authorization: Bearer <t
 | GET | `/donations/mine` | Listings created by the current donor | Donor |
 | GET | `/donations/:id` | Listing detail with items | Any |
 | PUT | `/donations/:id` | Update a listing | Donor (owner) |
-| DELETE | `/donations/:id` | Cancel a listing | Donor (owner), Admin |
+| DELETE | `/donations/:id` | Cancel a listing, soft cancel | Donor (owner), Admin |
+
+### Donor side of requests and handover (Sprint 2)
+
+| Method | Endpoint | Description | Role |
+|---|---|---|---|
+| GET | `/donations/requests/incoming` | Requests on the donor's listings, **read only** | Donor |
+| GET | `/donations/assignments/pending-confirmation` | Assignments awaiting this donor's pickup confirmation | Donor |
+| PATCH | `/donations/assignments/:assignmentId/confirm-pickup` | Confirm the food was handed to the driver | Donor (owner of the listing) |
+
+These sit under `/donations` rather than `/assignments` because the assignment routes belong to the coordinator module. They only ever write the two donor-owned pickup columns, never `request.status` or anything the coordinator or driver owns.
+
+`confirm-pickup` sets `pickup_donor_confirmed_at`. The assignment moves to `in_transit` only when **both** that column and `pickup_driver_confirmed_at` are set; the rule lives in `statusAfterPickupConfirmation()` in `donation.service.ts` and is exported so the driver module applies the same one. Confirming twice is rejected rather than overwriting the first timestamp.
 
 ---
 
@@ -39,8 +51,10 @@ All routes except `/auth/*` require a valid JWT in the `Authorization: Bearer <t
 | GET | `/requests/mine` | The current recipient's own requests | Recipient |
 | GET | `/requests/incoming` | Requests on the current donor's listings | Donor |
 | GET | `/requests/:id` | Request detail | Owner roles |
-| PUT | `/requests/:id/accept` | Accept a request | Donor (owner) |
-| PUT | `/requests/:id/reject` | Reject a request with an optional reason | Donor (owner) |
+| PUT | `/requests/:id/accept` | Accept a request | Coordinator |
+| PUT | `/requests/:id/reject` | Reject a request with an optional reason | Coordinator |
+
+> **Sprint 2 change.** Accepting and rejecting moved from the donor to the Donation Coordinator, who already owns matching and assignment. Having the donor approve as well duplicated a responsibility and added friction for a persona who has two minutes to spare. The donor now sees requests read only and confirms the handover instead. `GET /requests/incoming` is superseded by `GET /donations/requests/incoming` below; one of the two should be removed once the request module lands.
 
 ---
 
