@@ -91,6 +91,26 @@ export function MyListingsScreen({ navigation }: Props) {
 
       {!!error && <Text style={styles.error}>{error}</Text>}
 
+      {/*
+        Sprint 2 entry points. Confirming a handover is the donor's only
+        remaining active step after posting, so it sits alongside the read only
+        requests view rather than being buried inside a listing.
+      */}
+      <View style={styles.navRow}>
+        <Button
+          label="Confirm Pickup"
+          variant="secondary"
+          onPress={() => navigation.navigate('ConfirmPickup')}
+          style={styles.navButton}
+        />
+        <Button
+          label="Requests"
+          variant="secondary"
+          onPress={() => navigation.navigate('IncomingRequests')}
+          style={styles.navButton}
+        />
+      </View>
+
       <FlatList
         data={listings}
         keyExtractor={(item) => String(item.listingId)}
@@ -174,6 +194,8 @@ const styles = StyleSheet.create({
     fontSize: fontSize.secondary,
     marginBottom: spacing.sm,
   },
+  navRow: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.md },
+  navButton: { flex: 1 },
   emptyWrap: { flexGrow: 1, justifyContent: 'center' },
   cardTop: {
     flexDirection: 'row',

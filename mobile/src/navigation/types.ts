@@ -31,6 +31,10 @@ export type DonorStackParamList = {
     pickupWindowEnd: string;
   };
   ListingDetail: { listingId: number };
+  /** Read only. The Donation Coordinator approves requests, not the donor. */
+  IncomingRequests: undefined;
+  /** Omit assignmentId to see everything awaiting this donor's confirmation. */
+  ConfirmPickup: { assignmentId?: number } | undefined;
 };
 
 /** Haritha. Food Requests. */
