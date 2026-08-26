@@ -63,10 +63,15 @@ export function CoordinatorHomeScreen() {
 
   return (
     <ScreenContainer>
+      {/* Header matching Donor screen layout */}
       <View style={styles.header}>
         <View style={styles.headerText}>
-          <Text style={styles.greeting}>Signed in as {user?.name}</Text>
-          <Text style={styles.roleLabel}>Delivery Coordinator</Text>
+          <Text style={styles.greeting}>{user?.organisationName ?? user?.name}</Text>
+          <Text style={styles.subtitle}>
+            {queue.length === 0
+              ? 'No pending deliveries'
+              : `${queue.length} request${queue.length === 1 ? '' : 's'} awaiting assignment`}
+          </Text>
         </View>
         <Button
           label="Log Out"
@@ -78,7 +83,17 @@ export function CoordinatorHomeScreen() {
 
       {!!error && <Text style={styles.error}>{error}</Text>}
 
-      {/* KPI Stats Grid */}
+      {/* Navigation action row matching Donor screen */}
+      <View style={styles.navRow}>
+        <Button
+          label="Drivers List"
+          variant="secondary"
+          onPress={() => navigation.navigate('DriversList')}
+          style={styles.navButton}
+        />
+      </View>
+
+      {/* KPI Stats Summary */}
       <View style={styles.statsGrid}>
         <View style={styles.statCard}>
           <Text style={styles.statNumber}>{stats?.queueSize ?? 0}</Text>
@@ -90,7 +105,7 @@ export function CoordinatorHomeScreen() {
         </View>
         <View style={styles.statCard}>
           <Text style={styles.statNumber}>{stats?.activeDeliveryCount ?? 0}</Text>
-          <Text style={styles.statLabel}>In Transit / Active</Text>
+          <Text style={styles.statLabel}>In Transit</Text>
         </View>
         <View style={styles.statCard}>
           <Text style={styles.statNumber}>{stats?.completedDeliveryCount ?? 0}</Text>
@@ -98,15 +113,7 @@ export function CoordinatorHomeScreen() {
         </View>
       </View>
 
-      <View style={styles.sectionHeader}>
-        <Text style={styles.sectionTitle}>Delivery Queue</Text>
-        <Button
-          label="View Drivers"
-          variant="secondary"
-          onPress={() => navigation.navigate('DriversList')}
-          style={styles.driversButton}
-        />
-      </View>
+      <Text style={styles.sectionTitle}>Delivery Queue</Text>
 
       <FlatList
         data={queue}
@@ -122,7 +129,6 @@ export function CoordinatorHomeScreen() {
           />
         }
         renderItem={({ item }) => {
-          // Worst urgency is decided by request items
           const worstLevel = item.items.some((i) => i.item.urgencyLevel === 'critical')
             ? 'critical'
             : item.items.some((i) => i.item.urgencyLevel === 'urgent')
@@ -136,63 +142,37 @@ export function CoordinatorHomeScreen() {
               .sort()[0] ?? null;
 
           return (
-            <Card style={styles.requestCard}>
-              <View style={styles.cardHeader}>
-                <Text style={styles.listingTitle} numberOfLines={1}>
+            <Card>
+              <View style={styles.cardTop}>
+                <Text style={styles.cardTitle} numberOfLines={1}>
                   {item.listing.title}
                 </Text>
                 <StatusPill label="Awaiting Assignment" tone={worstLevel} />
               </View>
 
-              <View style={styles.detailRow}>
-                <Text style={styles.label}>Donor:</Text>
-                <Text style={styles.value} numberOfLines={1}>
-                  {item.listing.donor.organisationName ?? item.listing.donor.name}
-                </Text>
-              </View>
-
-              <View style={styles.detailRow}>
-                <Text style={styles.label}>Recipient:</Text>
-                <Text style={styles.value} numberOfLines={1}>
-                  {item.recipient.organisationName ?? item.recipient.name}
-                </Text>
-              </View>
-
-              <View style={styles.detailRow}>
-                <Text style={styles.label}>Items:</Text>
-                <Text style={styles.value}>
-                  {item.items
-                    .map(
-                      (ri) =>
-                        `${ri.item.foodName} (${ri.quantityRequested} ${ri.item.unit})`,
-                    )
-                    .join(', ')}
-                </Text>
-              </View>
-
-              <View style={styles.detailRow}>
-                <Text style={styles.label}>Pickup:</Text>
-                <Text style={styles.value} numberOfLines={1}>
-                  {formatDateTime(item.listing.pickupWindowStart)} -{' '}
-                  {formatDateTime(item.listing.pickupWindowEnd)}
-                </Text>
-              </View>
-
+              <Text style={styles.cardMeta} numberOfLines={1}>
+                Donor: {item.listing.donor.organisationName ?? item.listing.donor.name}
+              </Text>
+              <Text style={styles.cardMeta} numberOfLines={1}>
+                Recipient: {item.recipient.organisationName ?? item.recipient.name}
+              </Text>
+              <Text style={styles.cardMeta} numberOfLines={2}>
+                Items:{' '}
+                {item.items
+                  .map(
+                    (ri) =>
+                      `${ri.item.foodName} (${ri.quantityRequested} ${ri.item.unit})`,
+                  )
+                  .join(', ')}
+              </Text>
+              <Text style={styles.cardMeta} numberOfLines={1}>
+                Pickup: {formatDateTime(item.listing.pickupWindowStart)}
+              </Text>
               {soonestItemExpiry && (
-                <View style={styles.detailRow}>
-                  <Text style={styles.label}>Soonest Expiry:</Text>
-                  <Text
-                    style={[
-                      styles.value,
-                      worstLevel === 'critical' && styles.criticalText,
-                    ]}
-                  >
-                    {formatTimeUntil(soonestItemExpiry)}
-                  </Text>
-                </View>
+                <Text style={styles.cardMeta}>
+                  Expires: {formatTimeUntil(soonestItemExpiry)}
+                </Text>
               )}
-
-              {/* Assignment actions will be built in Sprint 2 / C02. For foundation, we just show the card. */}
             </Card>
           );
         }}
@@ -205,29 +185,31 @@ const styles = StyleSheet.create({
   centre: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   header: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     justifyContent: 'space-between',
     marginBottom: spacing.md,
     gap: spacing.sm,
   },
   headerText: { flexShrink: 1 },
   greeting: {
-    fontSize: fontSize.body,
+    fontSize: fontSize.heading,
     fontWeight: fontWeight.semibold,
     color: colours.textPrimary,
   },
-  roleLabel: { fontSize: fontSize.secondary, color: colours.textSecondary },
-  logout: { paddingHorizontal: spacing.md, height: 36 },
+  subtitle: { fontSize: fontSize.secondary, color: colours.textSecondary },
+  logout: { paddingHorizontal: spacing.md },
   error: {
     color: colours.critical,
     fontSize: fontSize.secondary,
     marginBottom: spacing.sm,
   },
+  navRow: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.md },
+  navButton: { flex: 1 },
   statsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'space-between',
-    marginBottom: spacing.lg,
+    marginBottom: spacing.md,
     gap: spacing.sm,
   },
   statCard: {
@@ -251,52 +233,29 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: spacing.xs,
   },
-  sectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: spacing.md,
-  },
   sectionTitle: {
     fontSize: fontSize.heading,
     fontWeight: fontWeight.semibold,
     color: colours.textPrimary,
+    marginBottom: spacing.sm,
   },
-  driversButton: { height: 36, paddingHorizontal: spacing.md },
   emptyWrap: { flexGrow: 1, justifyContent: 'center' },
-  requestCard: {
-    padding: spacing.md,
-  },
-  cardHeader: {
+  cardTop: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: spacing.md,
+    justifyContent: 'space-between',
     gap: spacing.sm,
+    marginBottom: spacing.xs,
   },
-  listingTitle: {
+  cardTitle: {
     fontSize: fontSize.body,
     fontWeight: fontWeight.semibold,
     color: colours.textPrimary,
     flexShrink: 1,
   },
-  detailRow: {
-    flexDirection: 'row',
-    marginBottom: spacing.xs,
-    gap: spacing.xs,
-  },
-  label: {
+  cardMeta: {
     fontSize: fontSize.secondary,
     color: colours.textSecondary,
-    width: 100,
-  },
-  value: {
-    fontSize: fontSize.secondary,
-    color: colours.textPrimary,
-    flex: 1,
-  },
-  criticalText: {
-    color: colours.critical,
-    fontWeight: fontWeight.semibold,
+    lineHeight: 20,
   },
 });
