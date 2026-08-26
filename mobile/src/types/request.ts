@@ -5,8 +5,8 @@
  * strings here, not numbers. Parse them with Number() at the point of use.
  */
 
-import type { ItemCategory, ItemUnit, ListingStatus } from '@prisma/client';
-import type { PublicUser } from './auth';
+import type { ItemCategory, ItemUnit, ListingStatus } from './donation';
+import type { User } from './index';
 
 export type RequestStatus = 'pending' | 'accepted' | 'rejected' | 'cancelled';
 
@@ -52,7 +52,7 @@ export interface DonationRequest {
   createdAt: string;
   updatedAt: string;
   listing: RequestListingSummary;
-  recipient: PublicUser;
+  recipient: User;
   items: RequestedItem[];
 }
 
