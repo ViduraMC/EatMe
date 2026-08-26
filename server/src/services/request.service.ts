@@ -228,3 +228,29 @@ export async function cancelRequest(
     include: requestInclude,
   });
 }
+
+/**
+ * Recomputes a listing's status from what is left of its items.
+ *
+ * Not called from this module today, because the donor no longer accepts
+ * requests and the coordinator owns acceptance. It is exported here so that
+ * when Kaushal's accept handler decrements stock, it can reuse the same
+ * derivation rather than writing a second version of it.
+ */
+
+export async function refreshListingStatus(listingId: number): Promise<void> {
+  const listing = await prisma.donationListing.findUnique({
+    where: { listingId },
+    include: { items: { select: { quantity: true, quantityRemaining: true } } },
+  });
+
+  if (!listing) return;
+
+  const next = deriveListingStatus(listing.items, listing.status);
+  if (next !== listing.status) {
+    await prisma.donationListing.update({
+      where: { listingId },
+      data: { status: next },
+    });
+  }
+}
