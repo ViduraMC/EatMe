@@ -39,9 +39,10 @@ export type DonorStackParamList = {
 
 /** Haritha. Food Requests. */
 export type RecipientStackParamList = {
-  RecipientHome: undefined;
-  // BrowseListings: undefined;
-  // MyRequests: undefined;
+  BrowseListings: undefined;
+  ListingDetail: { listingId: number };
+  CreateRequest: { listingId: number };
+  MyRequests: undefined;
 };
 
 /** Kaushal. Delivery Coordination. */
