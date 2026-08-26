@@ -14,6 +14,7 @@ import { AddItemsScreen } from '../screens/donor/AddItemsScreen';
 import { ListingDetailScreen } from '../screens/donor/ListingDetailScreen';
 import { RecipientHomeScreen } from '../screens/recipient/RecipientHomeScreen';
 import { CoordinatorHomeScreen } from '../screens/coordinator/CoordinatorHomeScreen';
+import { DriversListScreen } from '../screens/coordinator/DriversListScreen';
 import { DriverHomeScreen } from '../screens/driver/DriverHomeScreen';
 import { AdminHomeScreen } from '../screens/admin/AdminHomeScreen';
 
@@ -114,6 +115,11 @@ function CoordinatorNavigator() {
         name="CoordinatorHome"
         component={CoordinatorHomeScreen}
         options={{ title: 'Deliveries' }}
+      />
+      <CoordinatorStack.Screen
+        name="DriversList"
+        component={DriversListScreen}
+        options={{ title: 'Drivers' }}
       />
     </CoordinatorStack.Navigator>
   );

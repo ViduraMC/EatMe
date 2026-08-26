@@ -43,7 +43,7 @@ export type RecipientStackParamList = {
 /** Kaushal. Delivery Coordination. */
 export type CoordinatorStackParamList = {
   CoordinatorHome: undefined;
-  // PendingAssignments: undefined;
+  DriversList: undefined;
 };
 
 /** Lakkhana. Driver and Delivery. */
