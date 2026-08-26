@@ -63,7 +63,7 @@ export function CoordinatorHomeScreen() {
 
   return (
     <ScreenContainer>
-      {/* Header matching Donor screen layout */}
+      {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerText}>
           <Text style={styles.greeting}>{user?.organisationName ?? user?.name}</Text>
@@ -83,17 +83,7 @@ export function CoordinatorHomeScreen() {
 
       {!!error && <Text style={styles.error}>{error}</Text>}
 
-      {/* Navigation action row matching Donor screen */}
-      <View style={styles.navRow}>
-        <Button
-          label="Drivers List"
-          variant="secondary"
-          onPress={() => navigation.navigate('DriversList')}
-          style={styles.navButton}
-        />
-      </View>
-
-      {/* KPI Stats Summary */}
+      {/* KPI Stats Summary Cards */}
       <View style={styles.statsGrid}>
         <View style={styles.statCard}>
           <Text style={styles.statNumber}>{stats?.queueSize ?? 0}</Text>
@@ -113,7 +103,16 @@ export function CoordinatorHomeScreen() {
         </View>
       </View>
 
-      <Text style={styles.sectionTitle}>Delivery Queue</Text>
+      {/* Section Header with green Drivers List button between stats cards and queue list */}
+      <View style={styles.sectionHeader}>
+        <Text style={styles.sectionTitle}>Delivery Queue</Text>
+        <Button
+          label="Drivers List"
+          variant="primary"
+          onPress={() => navigation.navigate('DriversList')}
+          style={styles.driversButton}
+        />
+      </View>
 
       <FlatList
         data={queue}
@@ -203,8 +202,6 @@ const styles = StyleSheet.create({
     fontSize: fontSize.secondary,
     marginBottom: spacing.sm,
   },
-  navRow: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.md },
-  navButton: { flex: 1 },
   statsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -233,11 +230,20 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: spacing.xs,
   },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacing.sm,
+  },
   sectionTitle: {
     fontSize: fontSize.heading,
     fontWeight: fontWeight.semibold,
     color: colours.textPrimary,
-    marginBottom: spacing.sm,
+  },
+  driversButton: {
+    height: 36,
+    paddingHorizontal: spacing.md,
   },
   emptyWrap: { flexGrow: 1, justifyContent: 'center' },
   cardTop: {
