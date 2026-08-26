@@ -46,6 +46,14 @@ type UserResponse = ApiSuccess<{
   user: AdminUser;
 }>;
 
+type DeleteStaffResponse = ApiSuccess<{
+  deletedUser: {
+    userId: number;
+    name: string;
+    role: 'coordinator' | 'driver';
+  };
+}>;
+
 type RoleFilter = 'all' | UserRole;
 type StatusFilter = 'all' | UserStatus;
 type StaffRole = 'coordinator' | 'driver';
@@ -304,6 +312,62 @@ export function AdminUsersScreen() {
     },
     [updateUserStatus],
   );
+
+  const confirmDeleteStaff = useCallback((user: AdminUser) => {
+    if (!isStaffUser(user)) {
+      return;
+    }
+
+    const assignmentCount =
+      user.role === 'coordinator'
+        ? user._count.coordinatedAssignments
+        : user._count.drivenAssignments;
+
+    if (assignmentCount > 0) {
+      Alert.alert(
+        'Cannot delete account',
+        `${user.name} has assignment history, so this account must be kept for platform records. You can deactivate it instead.`,
+      );
+      return;
+    }
+
+    Alert.alert(
+      'Permanently delete staff?',
+      `Delete ${user.name}'s ${formatRole(
+        user.role,
+      ).toLowerCase()} account permanently? This action cannot be undone.`,
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            setUpdatingUserId(user.userId);
+
+            try {
+              await api.delete<DeleteStaffResponse>(`/admin/users/${user.userId}/staff`);
+
+              setUsers((currentUsers) =>
+                currentUsers.filter((currentUser) => currentUser.userId !== user.userId),
+              );
+
+              Alert.alert(
+                'Account deleted',
+                `${user.name}'s staff account was permanently deleted.`,
+              );
+            } catch (error) {
+              Alert.alert('Could not delete account', getErrorMessage(error));
+            } finally {
+              setUpdatingUserId(null);
+            }
+          },
+        },
+      ],
+    );
+  }, []);
 
   const openCreateStaff = useCallback(() => {
     setEditingStaff(null);
@@ -688,18 +752,33 @@ export function AdminUsersScreen() {
                     {!isAdmin && !isPendingRecipient && user.status !== 'rejected' ? (
                       <View style={styles.actionGroup}>
                         {isStaff ? (
-                          <Pressable
-                            accessibilityRole="button"
-                            disabled={isUpdating}
-                            onPress={() => openEditStaff(user)}
-                            style={({ pressed }) => [
-                              styles.smallActionButton,
-                              styles.editButton,
-                              (pressed || isUpdating) && styles.buttonPressed,
-                            ]}
-                          >
-                            <Text style={styles.editButtonText}>Edit</Text>
-                          </Pressable>
+                          <>
+                            <Pressable
+                              accessibilityRole="button"
+                              disabled={isUpdating}
+                              onPress={() => openEditStaff(user)}
+                              style={({ pressed }) => [
+                                styles.smallActionButton,
+                                styles.editButton,
+                                (pressed || isUpdating) && styles.buttonPressed,
+                              ]}
+                            >
+                              <Text style={styles.editButtonText}>Edit</Text>
+                            </Pressable>
+
+                            <Pressable
+                              accessibilityRole="button"
+                              disabled={isUpdating}
+                              onPress={() => confirmDeleteStaff(user)}
+                              style={({ pressed }) => [
+                                styles.smallActionButton,
+                                styles.deleteButton,
+                                (pressed || isUpdating) && styles.buttonPressed,
+                              ]}
+                            >
+                              <Text style={styles.deleteButtonText}>Delete</Text>
+                            </Pressable>
+                          </>
                         ) : null}
 
                         <Pressable
@@ -1349,6 +1428,17 @@ const styles = StyleSheet.create({
     fontSize: fontSize.secondary,
     fontWeight: fontWeight.semibold,
     color: colours.textPrimary,
+  },
+
+  deleteButton: {
+    borderColor: colours.critical,
+    backgroundColor: colours.background,
+  },
+
+  deleteButtonText: {
+    fontSize: fontSize.secondary,
+    fontWeight: fontWeight.semibold,
+    color: colours.critical,
   },
 
   approveButton: {

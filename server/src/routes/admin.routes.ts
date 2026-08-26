@@ -4,6 +4,7 @@ import {
   adminAssignments,
   adminCancelListing,
   adminCreateStaff,
+  adminDeleteStaff,
   adminListings,
   adminRequests,
   adminStats,
@@ -34,6 +35,13 @@ router.put(
   authenticate,
   requireRole('admin'),
   asyncHandler(adminUpdateStaff),
+);
+
+router.delete(
+  '/users/:userId/staff',
+  authenticate,
+  requireRole('admin'),
+  asyncHandler(adminDeleteStaff),
 );
 
 router.patch(

@@ -385,6 +385,58 @@ export async function cancelAdminListing(listingId: number) {
   });
 }
 
+export async function deleteAdminStaff(userId: number) {
+  const user = await prisma.user.findUnique({
+    where: {
+      userId,
+    },
+    select: {
+      userId: true,
+      name: true,
+      role: true,
+      _count: {
+        select: {
+          coordinatedAssignments: true,
+          drivenAssignments: true,
+        },
+      },
+    },
+  });
+
+  if (!user) {
+    throw ApiError.notFound('User not found');
+  }
+
+  if (user.role !== 'coordinator' && user.role !== 'driver') {
+    throw ApiError.conflict(
+      'Only coordinator and driver accounts can be permanently deleted',
+    );
+  }
+
+  const assignmentCount =
+    user.role === 'coordinator'
+      ? user._count.coordinatedAssignments
+      : user._count.drivenAssignments;
+
+  if (assignmentCount > 0) {
+    throw ApiError.conflict(
+      'This staff account has assignment history and cannot be permanently deleted. Deactivate the account instead.',
+    );
+  }
+
+  await prisma.user.delete({
+    where: {
+      userId,
+    },
+  });
+
+  return {
+    userId: user.userId,
+    name: user.name,
+    role: user.role,
+  };
+}
+
 export async function updateAdminUserStatus(
   userId: number,
   status: 'pending' | 'active' | 'inactive' | 'rejected',

@@ -4,6 +4,7 @@ import { z } from 'zod';
 import {
   cancelAdminListing,
   createAdminStaff,
+  deleteAdminStaff,
   getAdminAssignments,
   getAdminListings,
   getAdminRequests,
@@ -70,6 +71,25 @@ export async function adminUpdateStaff(req: Request, res: Response): Promise<voi
   const user = await updateAdminStaff(userId, input);
 
   sendSuccess(res, { user });
+}
+
+/** DELETE /api/admin/users/:userId/staff */
+export async function adminDeleteStaff(req: Request, res: Response): Promise<void> {
+  const userId = Number(req.params.userId);
+
+  if (!Number.isInteger(userId) || userId <= 0) {
+    res.status(400).json({
+      success: false,
+      message: 'Invalid user ID',
+    });
+    return;
+  }
+
+  const deletedUser = await deleteAdminStaff(userId);
+
+  sendSuccess(res, {
+    deletedUser,
+  });
 }
 
 /** PATCH /api/admin/users/:userId/status */
