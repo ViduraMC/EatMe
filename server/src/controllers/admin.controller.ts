@@ -6,6 +6,7 @@ import {
   getAdminRequests,
   getAdminStats,
   getAdminUsers,
+  updateAdminUserStatus,
 } from '../services/admin.service';
 import { sendSuccess } from '../utils/apiResponse';
 
@@ -59,4 +60,30 @@ export async function adminAssignments(_req: Request, res: Response): Promise<vo
   const assignments = await getAdminAssignments();
 
   sendSuccess(res, { assignments });
+}
+
+/** PATCH /api/admin/users/:userId/status */
+export async function adminUpdateUserStatus(req: Request, res: Response): Promise<void> {
+  const userId = Number(req.params.userId);
+  const status = req.body?.status;
+
+  if (!Number.isInteger(userId) || userId <= 0) {
+    res.status(400).json({
+      success: false,
+      message: 'Invalid user ID',
+    });
+    return;
+  }
+
+  if (status !== 'active' && status !== 'inactive') {
+    res.status(400).json({
+      success: false,
+      message: 'Status must be active or inactive',
+    });
+    return;
+  }
+
+  const user = await updateAdminUserStatus(userId, status);
+
+  sendSuccess(res, { user });
 }

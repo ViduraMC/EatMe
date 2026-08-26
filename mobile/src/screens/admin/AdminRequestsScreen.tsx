@@ -90,23 +90,6 @@ function formatStatus(status: RequestStatus): string {
   return status.charAt(0).toUpperCase() + status.slice(1);
 }
 
-function formatDateTime(value: string | null): string {
-  if (!value) {
-    return 'Not yet';
-  }
-
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return value;
-  }
-
-  return date.toLocaleString([], {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  });
-}
-
 function getStatusStyle(status: RequestStatus) {
   if (status === 'accepted') {
     return {
@@ -193,13 +176,15 @@ export function AdminRequestsScreen() {
       const donorName = request.listing.donor.name.toLowerCase();
       const donorOrganisation =
         request.listing.donor.organisationName?.toLowerCase() ?? '';
+      const pickupAddress = request.listing.pickupAddress.toLowerCase();
 
       return (
         recipientName.includes(normalisedQuery) ||
         recipientOrganisation.includes(normalisedQuery) ||
         listingTitle.includes(normalisedQuery) ||
         donorName.includes(normalisedQuery) ||
-        donorOrganisation.includes(normalisedQuery)
+        donorOrganisation.includes(normalisedQuery) ||
+        pickupAddress.includes(normalisedQuery)
       );
     });
   }, [requests, searchQuery, statusFilter]);
@@ -226,82 +211,53 @@ export function AdminRequestsScreen() {
         />
       }
     >
-      <View style={styles.header}>
-        <Text style={styles.eyebrow}>REQUEST MONITORING</Text>
-        <Text style={styles.title}>Donation Requests</Text>
-        <Text style={styles.subtitle}>
-          Review recipient requests, requested food, and current request status.
-        </Text>
-      </View>
+      <Text style={styles.title}>All Requests</Text>
 
-      <View style={styles.summaryRow}>
-        <View style={styles.summaryCard}>
-          <Text style={styles.summaryValue}>{requests.length}</Text>
-          <Text style={styles.summaryLabel}>Total requests</Text>
-        </View>
+      <TextInput
+        value={searchQuery}
+        onChangeText={setSearchQuery}
+        placeholder="Search requests"
+        placeholderTextColor={colours.textSecondary}
+        style={styles.searchInput}
+        autoCapitalize="none"
+        autoCorrect={false}
+        returnKeyType="search"
+      />
 
-        <View style={styles.summaryCard}>
-          <Text style={styles.summaryValue}>
-            {requests.filter((request) => request.status === 'pending').length}
-          </Text>
-          <Text style={styles.summaryLabel}>Pending requests</Text>
-        </View>
-      </View>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.filterRow}
+        keyboardShouldPersistTaps="handled"
+      >
+        {statusFilters.map((filter) => {
+          const selected = statusFilter === filter.value;
 
-      <View style={styles.searchSection}>
-        <Text style={styles.fieldLabel}>Search requests</Text>
-
-        <TextInput
-          value={searchQuery}
-          onChangeText={setSearchQuery}
-          placeholder="Recipient, donor, organisation or listing"
-          placeholderTextColor={colours.textSecondary}
-          style={styles.searchInput}
-          autoCapitalize="none"
-          autoCorrect={false}
-          returnKeyType="search"
-        />
-      </View>
-
-      <View style={styles.filterSection}>
-        <Text style={styles.fieldLabel}>Status</Text>
-
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.filterRow}
-        >
-          {statusFilters.map((filter) => {
-            const selected = statusFilter === filter.value;
-
-            return (
-              <Pressable
-                key={filter.value}
-                accessibilityRole="button"
-                onPress={() => setStatusFilter(filter.value)}
-                style={({ pressed }) => [
-                  styles.filterChip,
-                  selected && styles.filterChipSelected,
-                  pressed && styles.buttonPressed,
-                ]}
+          return (
+            <Pressable
+              key={filter.value}
+              accessibilityRole="button"
+              onPress={() => setStatusFilter(filter.value)}
+              style={({ pressed }) => [
+                styles.filterChip,
+                selected && styles.filterChipSelected,
+                pressed && styles.buttonPressed,
+              ]}
+            >
+              <Text
+                style={[styles.filterChipText, selected && styles.filterChipTextSelected]}
               >
-                <Text
-                  style={[
-                    styles.filterChipText,
-                    selected && styles.filterChipTextSelected,
-                  ]}
-                >
-                  {filter.label}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </ScrollView>
-      </View>
+                {filter.label}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </ScrollView>
 
       {errorMessage ? (
         <View style={styles.errorCard}>
           <Text style={styles.errorTitle}>Could not load requests</Text>
+
           <Text style={styles.errorMessage}>{errorMessage}</Text>
 
           <Pressable
@@ -319,116 +275,124 @@ export function AdminRequestsScreen() {
       {!errorMessage && filteredRequests.length === 0 ? (
         <View style={styles.emptyCard}>
           <Text style={styles.emptyTitle}>No requests found</Text>
+
           <Text style={styles.emptyText}>
             Try another search term or change the selected status filter.
           </Text>
         </View>
       ) : null}
 
-      {filteredRequests.map((request) => {
-        const statusStyle = getStatusStyle(request.status);
-        const recipientDisplayName =
-          request.recipient.organisationName || request.recipient.name;
-        const donorDisplayName =
-          request.listing.donor.organisationName || request.listing.donor.name;
+      {!errorMessage
+        ? filteredRequests.map((request) => {
+            const statusStyle = getStatusStyle(request.status);
 
-        return (
-          <View key={request.requestId} style={styles.requestCard}>
-            <View style={styles.requestHeader}>
-              <View style={styles.requestHeaderText}>
-                <Text style={styles.requestTitle}>{request.listing.title}</Text>
+            const recipientDisplayName =
+              request.recipient.organisationName || request.recipient.name;
 
-                <Text style={styles.requestId}>Request #{request.requestId}</Text>
-              </View>
+            const donorDisplayName =
+              request.listing.donor.organisationName || request.listing.donor.name;
 
-              <View
-                style={[
-                  styles.statusBadge,
-                  {
-                    backgroundColor: statusStyle.backgroundColor,
-                  },
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.statusBadgeText,
-                    {
-                      color: statusStyle.textColor,
-                    },
-                  ]}
-                >
-                  {formatStatus(request.status)}
+            const itemCount = request.items.length;
+
+            return (
+              <View key={request.requestId} style={styles.requestRow}>
+                <View style={styles.rowTop}>
+                  <View style={styles.rowMain}>
+                    <Text style={styles.requestTitle} numberOfLines={2}>
+                      {request.listing.title}
+                    </Text>
+
+                    <Text style={styles.recipientName} numberOfLines={1}>
+                      {recipientDisplayName}
+                    </Text>
+                  </View>
+
+                  <View
+                    style={[
+                      styles.statusBadge,
+                      {
+                        backgroundColor: statusStyle.backgroundColor,
+                      },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.statusBadgeText,
+                        {
+                          color: statusStyle.textColor,
+                        },
+                      ]}
+                    >
+                      {formatStatus(request.status)}
+                    </Text>
+                  </View>
+                </View>
+
+                <Text style={styles.donorText} numberOfLines={1}>
+                  Donor: {donorDisplayName}
                 </Text>
-              </View>
-            </View>
 
-            {request.message ? (
-              <Text style={styles.message}>"{request.message}"</Text>
-            ) : null}
-
-            <View style={styles.divider} />
-
-            <View style={styles.detailGroup}>
-              <Text style={styles.detailLabel}>Recipient</Text>
-              <Text style={styles.detailValue}>{recipientDisplayName}</Text>
-
-              {request.recipient.organisationName ? (
-                <Text style={styles.detailSupporting}>
-                  Contact: {request.recipient.name}
+                <Text style={styles.pickupAddress} numberOfLines={1}>
+                  {request.listing.pickupAddress}
                 </Text>
-              ) : null}
 
-              <Text style={styles.detailSupporting}>{request.recipient.email}</Text>
+                {request.items.length > 0 ? (
+                  <View style={styles.itemsSection}>
+                    {request.items.slice(0, 2).map((requestItem) => (
+                      <Text
+                        key={requestItem.requestItemId}
+                        style={styles.itemText}
+                        numberOfLines={1}
+                      >
+                        {requestItem.item.foodName} · {requestItem.quantityRequested}{' '}
+                        {requestItem.item.unit}
+                      </Text>
+                    ))}
 
-              <Text style={styles.detailSupporting}>{request.recipient.phone}</Text>
-            </View>
+                    {request.items.length > 2 ? (
+                      <Text style={styles.moreItemsText}>
+                        +{request.items.length - 2} more{' '}
+                        {request.items.length - 2 === 1 ? 'item' : 'items'}
+                      </Text>
+                    ) : null}
+                  </View>
+                ) : null}
 
-            <View style={styles.detailGroup}>
-              <Text style={styles.detailLabel}>Donor</Text>
-              <Text style={styles.detailValue}>{donorDisplayName}</Text>
-            </View>
+                {request.status === 'rejected' && request.rejectionReason ? (
+                  <View style={styles.rejectionNote}>
+                    <Text style={styles.rejectionText} numberOfLines={2}>
+                      {request.rejectionReason}
+                    </Text>
+                  </View>
+                ) : null}
 
-            <View style={styles.detailGroup}>
-              <Text style={styles.detailLabel}>Pickup location</Text>
-              <Text style={styles.detailValue}>{request.listing.pickupAddress}</Text>
-            </View>
+                <View style={styles.rowFooter}>
+                  <Text style={styles.requestMeta}>Request #{request.requestId}</Text>
 
-            <View style={styles.detailGroup}>
-              <Text style={styles.detailLabel}>Requested items</Text>
+                  <Text style={styles.requestMeta}>
+                    {itemCount} {itemCount === 1 ? 'item' : 'items'}
+                  </Text>
 
-              {request.items.map((requestItem) => (
-                <Text key={requestItem.requestItemId} style={styles.itemText}>
-                  {requestItem.item.foodName} — {requestItem.quantityRequested}{' '}
-                  {requestItem.item.unit}
-                </Text>
-              ))}
-            </View>
-
-            {request.rejectionReason ? (
-              <View style={styles.rejectionBox}>
-                <Text style={styles.rejectionLabel}>Rejection reason</Text>
-                <Text style={styles.rejectionText}>{request.rejectionReason}</Text>
+                  <Text style={styles.requestMeta}>
+                    {request._count.assignments}{' '}
+                    {request._count.assignments === 1 ? 'assignment' : 'assignments'}
+                  </Text>
+                </View>
               </View>
-            ) : null}
+            );
+          })
+        : null}
 
-            <View style={styles.metadataRow}>
-              <View style={styles.metadataItem}>
-                <Text style={styles.metadataValue}>{request._count.assignments}</Text>
-                <Text style={styles.metadataLabel}>Assignments</Text>
-              </View>
+      {!errorMessage && requests.length > 0 ? (
+        <View style={styles.infoCard}>
+          <Text style={styles.infoMark}>i</Text>
 
-              <View style={styles.metadataDivider} />
-
-              <View style={styles.metadataItem}>
-                <Text style={styles.metadataValue}>
-                  {formatDateTime(request.respondedAt)}
-                </Text>
-                <Text style={styles.metadataLabel}>Responded</Text>
-              </View>
-            </View>
-          </View>
-        );
-      })}
+          <Text style={styles.infoText}>
+            Requests are shown here for platform monitoring. Their status is managed
+            through the appropriate donor and delivery workflows.
+          </Text>
+        </View>
+      ) : null}
     </ScrollView>
   );
 }
@@ -438,10 +402,12 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colours.background,
   },
+
   content: {
     padding: layout.screenPadding,
     paddingBottom: spacing.xxl,
   },
+
   centeredState: {
     flex: 1,
     alignItems: 'center',
@@ -449,85 +415,42 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
     backgroundColor: colours.background,
   },
+
   stateText: {
     marginTop: spacing.md,
     fontSize: fontSize.body,
     color: colours.textSecondary,
     textAlign: 'center',
   },
-  header: {
-    marginBottom: spacing.lg,
-  },
-  eyebrow: {
-    marginBottom: spacing.sm,
-    fontSize: fontSize.label,
-    fontWeight: fontWeight.semibold,
-    color: colours.accent,
-    letterSpacing: 0.8,
-  },
+
   title: {
-    fontSize: fontSize.title,
-    fontWeight: fontWeight.bold,
-    color: colours.textPrimary,
-  },
-  subtitle: {
-    marginTop: spacing.sm,
-    fontSize: fontSize.body,
-    lineHeight: 24,
-    color: colours.textSecondary,
-  },
-  summaryRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: spacing.lg,
-  },
-  summaryCard: {
-    width: '48%',
-    padding: spacing.md,
-    borderWidth: layout.borderWidth,
-    borderColor: colours.border,
-    borderRadius: layout.radius,
-    backgroundColor: colours.surface,
-  },
-  summaryValue: {
+    marginBottom: spacing.md,
     fontSize: fontSize.heading,
     fontWeight: fontWeight.bold,
     color: colours.textPrimary,
   },
-  summaryLabel: {
-    marginTop: spacing.xs,
-    fontSize: fontSize.secondary,
-    color: colours.textSecondary,
-  },
-  searchSection: {
-    marginBottom: spacing.md,
-  },
-  fieldLabel: {
-    marginBottom: spacing.sm,
-    fontSize: fontSize.secondary,
-    fontWeight: fontWeight.semibold,
-    color: colours.textPrimary,
-  },
+
   searchInput: {
     minHeight: layout.controlHeight,
+    marginBottom: spacing.sm,
     paddingHorizontal: spacing.md,
     borderWidth: layout.borderWidth,
     borderColor: colours.border,
     borderRadius: layout.radius,
     backgroundColor: colours.background,
-    fontSize: fontSize.body,
+    fontSize: fontSize.secondary,
     color: colours.textPrimary,
   },
-  filterSection: {
-    marginBottom: spacing.lg,
-  },
+
   filterRow: {
+    paddingBottom: spacing.lg,
     paddingRight: spacing.md,
   },
+
   filterChip: {
-    minHeight: 40,
-    marginRight: spacing.sm,
-    paddingHorizontal: spacing.md,
+    minHeight: 34,
+    marginRight: spacing.xs,
+    paddingHorizontal: spacing.sm,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: layout.borderWidth,
@@ -535,18 +458,22 @@ const styles = StyleSheet.create({
     borderRadius: layout.radius,
     backgroundColor: colours.background,
   },
+
   filterChipSelected: {
     borderColor: colours.accent,
     backgroundColor: colours.accent,
   },
+
   filterChipText: {
-    fontSize: fontSize.secondary,
+    fontSize: fontSize.label,
     fontWeight: fontWeight.medium,
     color: colours.textSecondary,
   },
+
   filterChipTextSelected: {
     color: colours.textInverse,
   },
+
   errorCard: {
     marginBottom: spacing.lg,
     padding: spacing.md,
@@ -555,17 +482,20 @@ const styles = StyleSheet.create({
     borderRadius: layout.radius,
     backgroundColor: colours.surface,
   },
+
   errorTitle: {
     fontSize: fontSize.body,
     fontWeight: fontWeight.semibold,
     color: colours.critical,
   },
+
   errorMessage: {
     marginTop: spacing.sm,
     fontSize: fontSize.secondary,
     lineHeight: 20,
     color: colours.textSecondary,
   },
+
   retryButton: {
     alignSelf: 'flex-start',
     minHeight: layout.controlHeight,
@@ -576,11 +506,13 @@ const styles = StyleSheet.create({
     borderRadius: layout.radius,
     backgroundColor: colours.critical,
   },
+
   retryButtonText: {
     fontSize: fontSize.secondary,
     fontWeight: fontWeight.semibold,
     color: colours.textInverse,
   },
+
   emptyCard: {
     padding: spacing.lg,
     alignItems: 'center',
@@ -589,11 +521,13 @@ const styles = StyleSheet.create({
     borderRadius: layout.radius,
     backgroundColor: colours.surface,
   },
+
   emptyTitle: {
     fontSize: fontSize.body,
     fontWeight: fontWeight.semibold,
     color: colours.textPrimary,
   },
+
   emptyText: {
     marginTop: spacing.sm,
     fontSize: fontSize.secondary,
@@ -601,125 +535,140 @@ const styles = StyleSheet.create({
     color: colours.textSecondary,
     textAlign: 'center',
   },
-  requestCard: {
-    marginBottom: spacing.md,
+
+  requestRow: {
+    marginBottom: spacing.sm,
     padding: spacing.md,
     borderWidth: layout.borderWidth,
     borderColor: colours.border,
     borderRadius: layout.radius,
     backgroundColor: colours.background,
   },
-  requestHeader: {
+
+  rowTop: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    justifyContent: 'space-between',
   },
-  requestHeaderText: {
+
+  rowMain: {
     flex: 1,
     paddingRight: spacing.sm,
   },
+
   requestTitle: {
-    fontSize: fontSize.body,
+    fontSize: fontSize.secondary,
     fontWeight: fontWeight.semibold,
     color: colours.textPrimary,
   },
-  requestId: {
+
+  recipientName: {
     marginTop: spacing.xs,
     fontSize: fontSize.label,
     color: colours.textSecondary,
   },
+
   statusBadge: {
-    maxWidth: '40%',
+    maxWidth: '34%',
     paddingVertical: spacing.xs,
     paddingHorizontal: spacing.sm,
     borderRadius: layout.radius,
   },
+
   statusBadgeText: {
     fontSize: fontSize.label,
     fontWeight: fontWeight.semibold,
     textAlign: 'center',
   },
-  message: {
-    marginTop: spacing.md,
-    fontSize: fontSize.secondary,
-    lineHeight: 20,
-    color: colours.textSecondary,
-    fontStyle: 'italic',
-  },
-  divider: {
-    height: layout.borderWidth,
-    marginVertical: spacing.md,
-    backgroundColor: colours.border,
-  },
-  detailGroup: {
-    marginBottom: spacing.md,
-  },
-  detailLabel: {
-    marginBottom: spacing.xs,
+
+  donorText: {
+    marginTop: spacing.sm,
     fontSize: fontSize.label,
-    fontWeight: fontWeight.semibold,
     color: colours.textSecondary,
-    textTransform: 'uppercase',
   },
-  detailValue: {
-    fontSize: fontSize.secondary,
-    fontWeight: fontWeight.medium,
-    color: colours.textPrimary,
-  },
-  detailSupporting: {
+
+  pickupAddress: {
     marginTop: spacing.xs,
     fontSize: fontSize.label,
     color: colours.textSecondary,
   },
+
+  itemsSection: {
+    marginTop: spacing.sm,
+    padding: spacing.sm,
+    borderRadius: layout.radius,
+    backgroundColor: colours.surface,
+  },
+
   itemText: {
-    marginTop: spacing.xs,
-    fontSize: fontSize.secondary,
+    fontSize: fontSize.label,
     color: colours.textPrimary,
   },
-  rejectionBox: {
-    marginBottom: spacing.md,
-    padding: spacing.md,
+
+  moreItemsText: {
+    marginTop: spacing.xs,
+    fontSize: fontSize.label,
+    color: colours.textSecondary,
+  },
+
+  rejectionNote: {
+    marginTop: spacing.sm,
+    padding: spacing.sm,
     borderRadius: layout.radius,
     backgroundColor: '#FEE2E2',
   },
-  rejectionLabel: {
-    fontSize: fontSize.label,
-    fontWeight: fontWeight.semibold,
-    color: colours.critical,
-    textTransform: 'uppercase',
-  },
+
   rejectionText: {
-    marginTop: spacing.xs,
-    fontSize: fontSize.secondary,
-    lineHeight: 20,
-    color: colours.textPrimary,
+    fontSize: fontSize.label,
+    lineHeight: 18,
+    color: colours.critical,
   },
-  metadataRow: {
+
+  rowFooter: {
     flexDirection: 'row',
-    alignItems: 'stretch',
+    justifyContent: 'space-between',
+    flexWrap: 'wrap',
     marginTop: spacing.sm,
-    paddingTop: spacing.md,
+    paddingTop: spacing.sm,
     borderTopWidth: layout.borderWidth,
     borderTopColor: colours.border,
   },
-  metadataItem: {
-    flex: 1,
-  },
-  metadataDivider: {
-    width: layout.borderWidth,
-    marginHorizontal: spacing.md,
-    backgroundColor: colours.border,
-  },
-  metadataValue: {
-    fontSize: fontSize.secondary,
-    fontWeight: fontWeight.semibold,
-    color: colours.textPrimary,
-  },
-  metadataLabel: {
-    marginTop: spacing.xs,
+
+  requestMeta: {
     fontSize: fontSize.label,
     color: colours.textSecondary,
   },
+
+  infoCard: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginTop: spacing.sm,
+    padding: spacing.md,
+    borderWidth: layout.borderWidth,
+    borderColor: colours.border,
+    borderRadius: layout.radius,
+    backgroundColor: colours.surface,
+  },
+
+  infoMark: {
+    width: 22,
+    height: 22,
+    marginRight: spacing.sm,
+    textAlign: 'center',
+    fontSize: fontSize.label,
+    fontWeight: fontWeight.bold,
+    lineHeight: 22,
+    color: colours.textInverse,
+    backgroundColor: colours.accent,
+    borderRadius: 11,
+  },
+
+  infoText: {
+    flex: 1,
+    fontSize: fontSize.label,
+    lineHeight: 18,
+    color: colours.textSecondary,
+  },
+
   buttonPressed: {
     opacity: 0.8,
   },

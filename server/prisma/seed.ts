@@ -183,6 +183,8 @@ async function main(): Promise<void> {
   const bakeryId = users.get('bakery@eatme.lk')!;
   const recipientId = users.get('recipient@eatme.lk')!;
   const eldersId = users.get('elders@eatme.lk')!;
+  const coordinatorId = users.get('coordinator@eatme.lk')!;
+  const driverId = users.get('driver@eatme.lk')!;
 
   console.log('Creating listings and items...');
 
@@ -365,7 +367,7 @@ async function main(): Promise<void> {
     select: { quantityRemaining: true },
   });
 
-  await prisma.donationRequest.create({
+  const acceptedRequest = await prisma.donationRequest.create({
     data: {
       listingId: bread.listingId,
       recipientId: eldersId,
@@ -394,6 +396,20 @@ async function main(): Promise<void> {
   await prisma.donationListing.update({
     where: { listingId: bread.listingId },
     data: { status: 'partially_claimed' },
+  });
+
+  console.log('Creating delivery assignments...');
+
+  await prisma.deliveryAssignment.create({
+    data: {
+      requestId: acceptedRequest.requestId,
+      coordinatorId,
+      driverId,
+      status: 'pending_driver',
+      noteToDriver:
+        'Collect the bread from Colombo Fort Bakers and deliver it to Mount Lavinia Elders’ Home.',
+      assignedAt: hoursAgo(0.5),
+    },
   });
 
   await printSummary();

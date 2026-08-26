@@ -16,6 +16,7 @@ import { AdminHomeScreen } from '../screens/admin/AdminHomeScreen';
 import { AdminListingsScreen } from '../screens/admin/AdminListingsScreen';
 import { AdminRequestsScreen } from '../screens/admin/AdminRequestsScreen';
 import { AdminAssignmentsScreen } from '../screens/admin/AdminAssignmentsScreen';
+import { AdminUsersScreen } from '../screens/admin/AdminUsersScreen';
 
 import type {
   AdminStackParamList,
@@ -144,6 +145,12 @@ function AdminNavigator() {
         name="AdminAssignments"
         component={AdminAssignmentsScreen}
         options={{ title: 'Delivery Assignments' }}
+      />
+
+      <AdminStack.Screen
+        name="AdminUsers"
+        component={AdminUsersScreen}
+        options={{ title: 'Users' }}
       />
     </AdminStack.Navigator>
   );

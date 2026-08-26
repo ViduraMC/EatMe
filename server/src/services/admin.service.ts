@@ -276,3 +276,61 @@ export async function cancelAdminListing(listingId: number) {
     },
   });
 }
+
+export async function updateAdminUserStatus(
+  userId: number,
+  status: 'active' | 'inactive',
+) {
+  const user = await prisma.user.findUnique({
+    where: {
+      userId,
+    },
+    select: {
+      userId: true,
+      role: true,
+      status: true,
+    },
+  });
+
+  if (!user) {
+    throw ApiError.notFound('User not found');
+  }
+
+  if (user.role === 'admin') {
+    throw ApiError.conflict('Administrator accounts cannot be deactivated here');
+  }
+
+  if (user.status === status) {
+    throw ApiError.conflict(`This user is already ${status}`);
+  }
+
+  return prisma.user.update({
+    where: {
+      userId,
+    },
+    data: {
+      status,
+    },
+    select: {
+      userId: true,
+      name: true,
+      email: true,
+      phone: true,
+      address: true,
+      role: true,
+      organisationName: true,
+      isAvailable: true,
+      status: true,
+      createdAt: true,
+      updatedAt: true,
+      _count: {
+        select: {
+          listings: true,
+          requests: true,
+          coordinatedAssignments: true,
+          drivenAssignments: true,
+        },
+      },
+    },
+  });
+}

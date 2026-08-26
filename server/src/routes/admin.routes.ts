@@ -6,6 +6,7 @@ import {
   adminListings,
   adminRequests,
   adminStats,
+  adminUpdateUserStatus,
   adminUsers,
 } from '../controllers/admin.controller';
 
@@ -18,6 +19,13 @@ const router = Router();
 router.get('/stats', authenticate, requireRole('admin'), asyncHandler(adminStats));
 
 router.get('/users', authenticate, requireRole('admin'), asyncHandler(adminUsers));
+
+router.patch(
+  '/users/:userId/status',
+  authenticate,
+  requireRole('admin'),
+  asyncHandler(adminUpdateUserStatus),
+);
 
 router.get('/listings', authenticate, requireRole('admin'), asyncHandler(adminListings));
 

@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Modal,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -73,29 +74,6 @@ function formatStatus(status: ListingStatus): string {
     .join(' ');
 }
 
-function formatDate(value: string): string {
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return value;
-  }
-
-  return date.toLocaleDateString();
-}
-
-function formatDateTime(value: string): string {
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return value;
-  }
-
-  return date.toLocaleString([], {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  });
-}
-
 function getStatusStyle(status: ListingStatus) {
   if (status === 'open') {
     return {
@@ -139,6 +117,10 @@ export function AdminListingsScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  const [menuListingId, setMenuListingId] = useState<number | null>(null);
+  const [selectedListing, setSelectedListing] = useState<AdminListing | null>(null);
+  const [isModerationModalVisible, setIsModerationModalVisible] = useState(false);
   const [moderatingListingId, setModeratingListingId] = useState<number | null>(null);
 
   const loadListings = useCallback(async (showFullLoader = false) => {
@@ -166,64 +148,9 @@ export function AdminListingsScreen() {
 
   const handleRefresh = useCallback(() => {
     setIsRefreshing(true);
+    setMenuListingId(null);
     void loadListings();
   }, [loadListings]);
-
-  const cancelListing = useCallback(async (listing: AdminListing) => {
-    setModeratingListingId(listing.listingId);
-
-    try {
-      const response = await api.patch<CancelListingResponse>(
-        `/admin/listings/${listing.listingId}/cancel`,
-      );
-
-      const updatedListing = response.data.data.listing;
-
-      setListings((currentListings) =>
-        currentListings.map((currentListing) =>
-          currentListing.listingId === updatedListing.listingId
-            ? updatedListing
-            : currentListing,
-        ),
-      );
-
-      Alert.alert(
-        'Listing cancelled',
-        `"${listing.title}" has been cancelled successfully.`,
-      );
-    } catch (error) {
-      Alert.alert('Could not cancel listing', getErrorMessage(error));
-    } finally {
-      setModeratingListingId(null);
-    }
-  }, []);
-
-  const handleCancelListing = useCallback(
-    (listing: AdminListing) => {
-      if (moderatingListingId !== null) {
-        return;
-      }
-
-      Alert.alert(
-        'Cancel donation listing?',
-        `This will stop "${listing.title}" from remaining open on the platform. The listing record and its history will be preserved.`,
-        [
-          {
-            text: 'Keep listing',
-            style: 'cancel',
-          },
-          {
-            text: 'Cancel listing',
-            style: 'destructive',
-            onPress: () => {
-              void cancelListing(listing);
-            },
-          },
-        ],
-      );
-    },
-    [cancelListing, moderatingListingId],
-  );
 
   const filteredListings = useMemo(() => {
     const normalisedQuery = searchQuery.trim().toLowerCase();
@@ -251,6 +178,53 @@ export function AdminListingsScreen() {
     });
   }, [listings, searchQuery, statusFilter]);
 
+  const openModerationModal = useCallback((listing: AdminListing) => {
+    setMenuListingId(null);
+    setSelectedListing(listing);
+    setIsModerationModalVisible(true);
+  }, []);
+
+  const closeModerationModal = useCallback(() => {
+    if (moderatingListingId !== null) {
+      return;
+    }
+
+    setIsModerationModalVisible(false);
+    setSelectedListing(null);
+  }, [moderatingListingId]);
+
+  const cancelListing = useCallback(async (listing: AdminListing) => {
+    setModeratingListingId(listing.listingId);
+
+    try {
+      const response = await api.patch<CancelListingResponse>(
+        `/admin/listings/${listing.listingId}/cancel`,
+      );
+
+      const updatedListing = response.data.data.listing;
+
+      setListings((currentListings) =>
+        currentListings.map((currentListing) =>
+          currentListing.listingId === updatedListing.listingId
+            ? updatedListing
+            : currentListing,
+        ),
+      );
+
+      setIsModerationModalVisible(false);
+      setSelectedListing(null);
+
+      Alert.alert(
+        'Listing cancelled',
+        `"${listing.title}" has been cancelled successfully.`,
+      );
+    } catch (error) {
+      Alert.alert('Could not cancel listing', getErrorMessage(error));
+    } finally {
+      setModeratingListingId(null);
+    }
+  }, []);
+
   if (isLoading) {
     return (
       <View style={styles.centeredState}>
@@ -261,65 +235,38 @@ export function AdminListingsScreen() {
   }
 
   return (
-    <ScrollView
-      style={styles.screen}
-      contentContainerStyle={styles.content}
-      keyboardShouldPersistTaps="handled"
-      refreshControl={
-        <RefreshControl
-          refreshing={isRefreshing}
-          onRefresh={handleRefresh}
-          tintColor={colours.accent}
-        />
-      }
-    >
-      <View style={styles.header}>
-        <Text style={styles.eyebrow}>LISTING MONITORING</Text>
-
-        <Text style={styles.title}>Donation Listings</Text>
-
-        <Text style={styles.subtitle}>
-          Review donation activity across the platform and moderate open listings when
-          necessary.
-        </Text>
-      </View>
-
-      <View style={styles.summaryRow}>
-        <View style={styles.summaryCard}>
-          <Text style={styles.summaryValue}>{listings.length}</Text>
-          <Text style={styles.summaryLabel}>Total listings</Text>
-        </View>
-
-        <View style={styles.summaryCard}>
-          <Text style={styles.summaryValue}>
-            {listings.filter((listing) => listing.status === 'open').length}
-          </Text>
-          <Text style={styles.summaryLabel}>Open listings</Text>
-        </View>
-      </View>
-
-      <View style={styles.searchSection}>
-        <Text style={styles.fieldLabel}>Search listings</Text>
+    <>
+      <ScrollView
+        style={styles.screen}
+        contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled"
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefreshing}
+            onRefresh={handleRefresh}
+            tintColor={colours.accent}
+          />
+        }
+        onScrollBeginDrag={() => setMenuListingId(null)}
+      >
+        <Text style={styles.title}>All Listings</Text>
 
         <TextInput
           value={searchQuery}
           onChangeText={setSearchQuery}
-          placeholder="Title, donor, organisation or address"
+          placeholder="Search listings"
           placeholderTextColor={colours.textSecondary}
           style={styles.searchInput}
           autoCapitalize="none"
           autoCorrect={false}
           returnKeyType="search"
         />
-      </View>
-
-      <View style={styles.filterSection}>
-        <Text style={styles.fieldLabel}>Status</Text>
 
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.filterRow}
+          keyboardShouldPersistTaps="handled"
         >
           {statusFilters.map((filter) => {
             const selected = statusFilter === filter.value;
@@ -328,7 +275,10 @@ export function AdminListingsScreen() {
               <Pressable
                 key={filter.value}
                 accessibilityRole="button"
-                onPress={() => setStatusFilter(filter.value)}
+                onPress={() => {
+                  setStatusFilter(filter.value);
+                  setMenuListingId(null);
+                }}
                 style={({ pressed }) => [
                   styles.filterChip,
                   selected && styles.filterChipSelected,
@@ -347,152 +297,209 @@ export function AdminListingsScreen() {
             );
           })}
         </ScrollView>
-      </View>
 
-      {errorMessage ? (
-        <View style={styles.errorCard}>
-          <Text style={styles.errorTitle}>Could not load listings</Text>
+        {errorMessage ? (
+          <View style={styles.errorCard}>
+            <Text style={styles.errorTitle}>Could not load listings</Text>
 
-          <Text style={styles.errorMessage}>{errorMessage}</Text>
+            <Text style={styles.errorMessage}>{errorMessage}</Text>
 
-          <Pressable
-            accessibilityRole="button"
-            style={({ pressed }) => [styles.retryButton, pressed && styles.buttonPressed]}
-            onPress={() => {
-              void loadListings(true);
-            }}
-          >
-            <Text style={styles.retryButtonText}>Try again</Text>
-          </Pressable>
-        </View>
-      ) : null}
+            <Pressable
+              accessibilityRole="button"
+              style={({ pressed }) => [
+                styles.retryButton,
+                pressed && styles.buttonPressed,
+              ]}
+              onPress={() => {
+                void loadListings(true);
+              }}
+            >
+              <Text style={styles.retryButtonText}>Try again</Text>
+            </Pressable>
+          </View>
+        ) : null}
 
-      {!errorMessage && filteredListings.length === 0 ? (
-        <View style={styles.emptyCard}>
-          <Text style={styles.emptyTitle}>No listings found</Text>
+        {!errorMessage && filteredListings.length === 0 ? (
+          <View style={styles.emptyCard}>
+            <Text style={styles.emptyTitle}>No listings found</Text>
 
-          <Text style={styles.emptyText}>
-            Try another search term or change the selected status filter.
-          </Text>
-        </View>
-      ) : null}
+            <Text style={styles.emptyText}>
+              Try another search term or change the selected status filter.
+            </Text>
+          </View>
+        ) : null}
 
-      {filteredListings.map((listing) => {
-        const statusStyle = getStatusStyle(listing.status);
-        const donorDisplayName = listing.donor.organisationName || listing.donor.name;
-        const isModerating = moderatingListingId === listing.listingId;
-        const moderationDisabled = moderatingListingId !== null;
+        {!errorMessage
+          ? filteredListings.map((listing) => {
+              const statusStyle = getStatusStyle(listing.status);
+              const donorDisplayName =
+                listing.donor.organisationName || listing.donor.name;
 
-        return (
-          <View key={listing.listingId} style={styles.listingCard}>
-            <View style={styles.listingHeader}>
-              <View style={styles.listingHeaderText}>
-                <Text style={styles.listingTitle}>{listing.title}</Text>
+              const menuOpen = menuListingId === listing.listingId;
 
-                <Text style={styles.listingId}>Listing #{listing.listingId}</Text>
-              </View>
+              return (
+                <View key={listing.listingId} style={styles.listingRow}>
+                  <View style={styles.rowTop}>
+                    <View style={styles.rowMain}>
+                      <Text style={styles.listingTitle} numberOfLines={2}>
+                        {listing.title}
+                      </Text>
 
-              <View
-                style={[
-                  styles.statusBadge,
-                  {
-                    backgroundColor: statusStyle.backgroundColor,
-                  },
+                      <Text style={styles.listingDonor} numberOfLines={1}>
+                        {donorDisplayName}
+                      </Text>
+                    </View>
+
+                    <View
+                      style={[
+                        styles.statusBadge,
+                        {
+                          backgroundColor: statusStyle.backgroundColor,
+                        },
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.statusBadgeText,
+                          {
+                            color: statusStyle.textColor,
+                          },
+                        ]}
+                      >
+                        {formatStatus(listing.status)}
+                      </Text>
+                    </View>
+
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel={`Actions for ${listing.title}`}
+                      hitSlop={10}
+                      onPress={() =>
+                        setMenuListingId((currentId) =>
+                          currentId === listing.listingId ? null : listing.listingId,
+                        )
+                      }
+                      style={({ pressed }) => [
+                        styles.menuButton,
+                        pressed && styles.buttonPressed,
+                      ]}
+                    >
+                      <Text style={styles.menuButtonText}>⋮</Text>
+                    </Pressable>
+                  </View>
+
+                  <Text style={styles.listingAddress} numberOfLines={1}>
+                    {listing.pickupAddress}
+                  </Text>
+
+                  <View style={styles.rowFooter}>
+                    <Text style={styles.listingMeta}>Listing #{listing.listingId}</Text>
+
+                    <Text style={styles.listingMeta}>
+                      {listing._count.requests}{' '}
+                      {listing._count.requests === 1 ? 'request' : 'requests'}
+                    </Text>
+                  </View>
+
+                  {menuOpen ? (
+                    <View style={styles.actionMenu}>
+                      {listing.status === 'open' ? (
+                        <Pressable
+                          accessibilityRole="button"
+                          onPress={() => openModerationModal(listing)}
+                          style={({ pressed }) => [
+                            styles.actionMenuItem,
+                            pressed && styles.actionMenuItemPressed,
+                          ]}
+                        >
+                          <Text style={styles.destructiveMenuText}>Cancel listing</Text>
+                        </Pressable>
+                      ) : (
+                        <View style={styles.actionMenuItem}>
+                          <Text style={styles.unavailableMenuText}>
+                            No moderation actions
+                          </Text>
+                        </View>
+                      )}
+                    </View>
+                  ) : null}
+                </View>
+              );
+            })
+          : null}
+
+        {!errorMessage && listings.length > 0 ? (
+          <View style={styles.infoCard}>
+            <Text style={styles.infoMark}>i</Text>
+
+            <Text style={styles.infoText}>
+              Listing records remain available after their status changes so platform
+              activity can still be reviewed.
+            </Text>
+          </View>
+        ) : null}
+      </ScrollView>
+
+      <Modal
+        visible={isModerationModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={closeModerationModal}
+      >
+        <View style={styles.modalBackdrop}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={closeModerationModal} />
+
+          <View style={styles.modalCard}>
+            <View style={styles.modalIcon}>
+              <Text style={styles.modalIconText}>!</Text>
+            </View>
+
+            <Text style={styles.modalTitle}>Cancel this listing?</Text>
+
+            <Text style={styles.modalDescription}>
+              {selectedListing
+                ? `"${selectedListing.title}" will no longer remain open on the platform. The listing record and its history will be preserved.`
+                : 'This listing will no longer remain open on the platform.'}
+            </Text>
+
+            <View style={styles.modalActions}>
+              <Pressable
+                accessibilityRole="button"
+                disabled={moderatingListingId !== null}
+                onPress={closeModerationModal}
+                style={({ pressed }) => [
+                  styles.modalSecondaryButton,
+                  pressed && styles.buttonPressed,
                 ]}
               >
-                <Text
-                  style={[
-                    styles.statusBadgeText,
-                    {
-                      color: statusStyle.textColor,
-                    },
-                  ]}
-                >
-                  {formatStatus(listing.status)}
-                </Text>
-              </View>
+                <Text style={styles.modalSecondaryButtonText}>Keep listing</Text>
+              </Pressable>
+
+              <Pressable
+                accessibilityRole="button"
+                disabled={moderatingListingId !== null || selectedListing === null}
+                onPress={() => {
+                  if (selectedListing) {
+                    void cancelListing(selectedListing);
+                  }
+                }}
+                style={({ pressed }) => [
+                  styles.modalDestructiveButton,
+                  moderatingListingId !== null && styles.buttonDisabled,
+                  pressed && moderatingListingId === null && styles.buttonPressed,
+                ]}
+              >
+                {moderatingListingId !== null ? (
+                  <ActivityIndicator size="small" color={colours.textInverse} />
+                ) : (
+                  <Text style={styles.modalDestructiveButtonText}>Cancel listing</Text>
+                )}
+              </Pressable>
             </View>
-
-            {listing.description ? (
-              <Text style={styles.description}>{listing.description}</Text>
-            ) : null}
-
-            <View style={styles.divider} />
-
-            <View style={styles.detailGroup}>
-              <Text style={styles.detailLabel}>Donor</Text>
-              <Text style={styles.detailValue}>{donorDisplayName}</Text>
-
-              {listing.donor.organisationName ? (
-                <Text style={styles.detailSupporting}>Contact: {listing.donor.name}</Text>
-              ) : null}
-
-              <Text style={styles.detailSupporting}>{listing.donor.email}</Text>
-
-              <Text style={styles.detailSupporting}>{listing.donor.phone}</Text>
-            </View>
-
-            <View style={styles.detailGroup}>
-              <Text style={styles.detailLabel}>Pickup location</Text>
-              <Text style={styles.detailValue}>{listing.pickupAddress}</Text>
-            </View>
-
-            <View style={styles.detailGroup}>
-              <Text style={styles.detailLabel}>Pickup window</Text>
-              <Text style={styles.detailValue}>
-                {formatDateTime(listing.pickupWindowStart)}
-              </Text>
-              <Text style={styles.detailSupporting}>
-                Until {formatDateTime(listing.pickupWindowEnd)}
-              </Text>
-            </View>
-
-            <View style={styles.metadataRow}>
-              <View style={styles.metadataItem}>
-                <Text style={styles.metadataValue}>{listing._count.requests}</Text>
-                <Text style={styles.metadataLabel}>Requests</Text>
-              </View>
-
-              <View style={styles.metadataDivider} />
-
-              <View style={styles.metadataItem}>
-                <Text style={styles.metadataValue}>{formatDate(listing.createdAt)}</Text>
-                <Text style={styles.metadataLabel}>Created</Text>
-              </View>
-            </View>
-
-            {listing.status === 'open' ? (
-              <View style={styles.moderationSection}>
-                <Text style={styles.moderationLabel}>ADMIN MODERATION</Text>
-
-                <Text style={styles.moderationText}>
-                  Cancel this listing if it should no longer remain available on the
-                  platform.
-                </Text>
-
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel={`Cancel ${listing.title}`}
-                  disabled={moderationDisabled}
-                  onPress={() => handleCancelListing(listing)}
-                  style={({ pressed }) => [
-                    styles.cancelListingButton,
-                    moderationDisabled && styles.buttonDisabled,
-                    pressed && !moderationDisabled && styles.buttonPressed,
-                  ]}
-                >
-                  {isModerating ? (
-                    <ActivityIndicator size="small" color={colours.textInverse} />
-                  ) : (
-                    <Text style={styles.cancelListingButtonText}>Cancel listing</Text>
-                  )}
-                </Pressable>
-              </View>
-            ) : null}
           </View>
-        );
-      })}
-    </ScrollView>
+        </View>
+      </Modal>
+    </>
   );
 }
 
@@ -501,10 +508,12 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colours.background,
   },
+
   content: {
     padding: layout.screenPadding,
     paddingBottom: spacing.xxl,
   },
+
   centeredState: {
     flex: 1,
     alignItems: 'center',
@@ -512,85 +521,42 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
     backgroundColor: colours.background,
   },
+
   stateText: {
     marginTop: spacing.md,
     fontSize: fontSize.body,
     color: colours.textSecondary,
     textAlign: 'center',
   },
-  header: {
-    marginBottom: spacing.lg,
-  },
-  eyebrow: {
-    marginBottom: spacing.sm,
-    fontSize: fontSize.label,
-    fontWeight: fontWeight.semibold,
-    color: colours.accent,
-    letterSpacing: 0.8,
-  },
+
   title: {
-    fontSize: fontSize.title,
-    fontWeight: fontWeight.bold,
-    color: colours.textPrimary,
-  },
-  subtitle: {
-    marginTop: spacing.sm,
-    fontSize: fontSize.body,
-    lineHeight: 24,
-    color: colours.textSecondary,
-  },
-  summaryRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: spacing.lg,
-  },
-  summaryCard: {
-    width: '48%',
-    padding: spacing.md,
-    borderWidth: layout.borderWidth,
-    borderColor: colours.border,
-    borderRadius: layout.radius,
-    backgroundColor: colours.surface,
-  },
-  summaryValue: {
+    marginBottom: spacing.md,
     fontSize: fontSize.heading,
     fontWeight: fontWeight.bold,
     color: colours.textPrimary,
   },
-  summaryLabel: {
-    marginTop: spacing.xs,
-    fontSize: fontSize.secondary,
-    color: colours.textSecondary,
-  },
-  searchSection: {
-    marginBottom: spacing.md,
-  },
-  fieldLabel: {
-    marginBottom: spacing.sm,
-    fontSize: fontSize.secondary,
-    fontWeight: fontWeight.semibold,
-    color: colours.textPrimary,
-  },
+
   searchInput: {
     minHeight: layout.controlHeight,
+    marginBottom: spacing.sm,
     paddingHorizontal: spacing.md,
     borderWidth: layout.borderWidth,
     borderColor: colours.border,
     borderRadius: layout.radius,
     backgroundColor: colours.background,
-    fontSize: fontSize.body,
+    fontSize: fontSize.secondary,
     color: colours.textPrimary,
   },
-  filterSection: {
-    marginBottom: spacing.lg,
-  },
+
   filterRow: {
+    paddingBottom: spacing.lg,
     paddingRight: spacing.md,
   },
+
   filterChip: {
-    minHeight: 40,
-    marginRight: spacing.sm,
-    paddingHorizontal: spacing.md,
+    minHeight: 34,
+    marginRight: spacing.xs,
+    paddingHorizontal: spacing.sm,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: layout.borderWidth,
@@ -598,18 +564,22 @@ const styles = StyleSheet.create({
     borderRadius: layout.radius,
     backgroundColor: colours.background,
   },
+
   filterChipSelected: {
     borderColor: colours.accent,
     backgroundColor: colours.accent,
   },
+
   filterChipText: {
-    fontSize: fontSize.secondary,
+    fontSize: fontSize.label,
     fontWeight: fontWeight.medium,
     color: colours.textSecondary,
   },
+
   filterChipTextSelected: {
     color: colours.textInverse,
   },
+
   errorCard: {
     marginBottom: spacing.lg,
     padding: spacing.md,
@@ -618,17 +588,20 @@ const styles = StyleSheet.create({
     borderRadius: layout.radius,
     backgroundColor: colours.surface,
   },
+
   errorTitle: {
     fontSize: fontSize.body,
     fontWeight: fontWeight.semibold,
     color: colours.critical,
   },
+
   errorMessage: {
     marginTop: spacing.sm,
     fontSize: fontSize.secondary,
     lineHeight: 20,
     color: colours.textSecondary,
   },
+
   retryButton: {
     alignSelf: 'flex-start',
     minHeight: layout.controlHeight,
@@ -639,11 +612,13 @@ const styles = StyleSheet.create({
     borderRadius: layout.radius,
     backgroundColor: colours.critical,
   },
+
   retryButtonText: {
     fontSize: fontSize.secondary,
     fontWeight: fontWeight.semibold,
     color: colours.textInverse,
   },
+
   emptyCard: {
     padding: spacing.lg,
     alignItems: 'center',
@@ -652,11 +627,13 @@ const styles = StyleSheet.create({
     borderRadius: layout.radius,
     backgroundColor: colours.surface,
   },
+
   emptyTitle: {
     fontSize: fontSize.body,
     fontWeight: fontWeight.semibold,
     color: colours.textPrimary,
   },
+
   emptyText: {
     marginTop: spacing.sm,
     fontSize: fontSize.secondary,
@@ -664,135 +641,238 @@ const styles = StyleSheet.create({
     color: colours.textSecondary,
     textAlign: 'center',
   },
-  listingCard: {
-    marginBottom: spacing.md,
+
+  listingRow: {
+    position: 'relative',
+    marginBottom: spacing.sm,
     padding: spacing.md,
     borderWidth: layout.borderWidth,
     borderColor: colours.border,
     borderRadius: layout.radius,
     backgroundColor: colours.background,
   },
-  listingHeader: {
+
+  rowTop: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    justifyContent: 'space-between',
   },
-  listingHeaderText: {
+
+  rowMain: {
     flex: 1,
     paddingRight: spacing.sm,
   },
+
   listingTitle: {
-    fontSize: fontSize.body,
+    fontSize: fontSize.secondary,
     fontWeight: fontWeight.semibold,
     color: colours.textPrimary,
   },
-  listingId: {
+
+  listingDonor: {
     marginTop: spacing.xs,
     fontSize: fontSize.label,
     color: colours.textSecondary,
   },
+
   statusBadge: {
-    maxWidth: '44%',
+    maxWidth: '34%',
+    marginRight: spacing.xs,
     paddingVertical: spacing.xs,
     paddingHorizontal: spacing.sm,
     borderRadius: layout.radius,
   },
+
   statusBadgeText: {
     fontSize: fontSize.label,
     fontWeight: fontWeight.semibold,
     textAlign: 'center',
   },
-  description: {
-    marginTop: spacing.md,
-    fontSize: fontSize.secondary,
-    lineHeight: 20,
+
+  menuButton: {
+    width: 28,
+    height: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  menuButtonText: {
+    marginTop: -5,
+    fontSize: 24,
+    lineHeight: 28,
     color: colours.textSecondary,
   },
-  divider: {
-    height: layout.borderWidth,
-    marginVertical: spacing.md,
-    backgroundColor: colours.border,
-  },
-  detailGroup: {
-    marginBottom: spacing.md,
-  },
-  detailLabel: {
-    marginBottom: spacing.xs,
+
+  listingAddress: {
+    marginTop: spacing.sm,
     fontSize: fontSize.label,
-    fontWeight: fontWeight.semibold,
     color: colours.textSecondary,
-    textTransform: 'uppercase',
   },
-  detailValue: {
+
+  rowFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: spacing.sm,
+    paddingTop: spacing.sm,
+    borderTopWidth: layout.borderWidth,
+    borderTopColor: colours.border,
+  },
+
+  listingMeta: {
+    fontSize: fontSize.label,
+    color: colours.textSecondary,
+  },
+
+  actionMenu: {
+    position: 'absolute',
+    top: 46,
+    right: spacing.sm,
+    minWidth: 150,
+    zIndex: 20,
+    borderWidth: layout.borderWidth,
+    borderColor: colours.border,
+    borderRadius: layout.radius,
+    backgroundColor: colours.surface,
+  },
+
+  actionMenuItem: {
+    minHeight: 42,
+    paddingHorizontal: spacing.md,
+    justifyContent: 'center',
+  },
+
+  actionMenuItemPressed: {
+    opacity: 0.7,
+  },
+
+  destructiveMenuText: {
     fontSize: fontSize.secondary,
     fontWeight: fontWeight.medium,
-    color: colours.textPrimary,
-  },
-  detailSupporting: {
-    marginTop: spacing.xs,
-    fontSize: fontSize.label,
-    color: colours.textSecondary,
-  },
-  metadataRow: {
-    flexDirection: 'row',
-    alignItems: 'stretch',
-    marginTop: spacing.sm,
-    paddingTop: spacing.md,
-    borderTopWidth: layout.borderWidth,
-    borderTopColor: colours.border,
-  },
-  metadataItem: {
-    flex: 1,
-  },
-  metadataDivider: {
-    width: layout.borderWidth,
-    marginHorizontal: spacing.md,
-    backgroundColor: colours.border,
-  },
-  metadataValue: {
-    fontSize: fontSize.secondary,
-    fontWeight: fontWeight.semibold,
-    color: colours.textPrimary,
-  },
-  metadataLabel: {
-    marginTop: spacing.xs,
-    fontSize: fontSize.label,
-    color: colours.textSecondary,
-  },
-  moderationSection: {
-    marginTop: spacing.md,
-    paddingTop: spacing.md,
-    borderTopWidth: layout.borderWidth,
-    borderTopColor: colours.border,
-  },
-  moderationLabel: {
-    fontSize: fontSize.label,
-    fontWeight: fontWeight.semibold,
     color: colours.critical,
-    letterSpacing: 0.5,
   },
-  moderationText: {
-    marginTop: spacing.xs,
-    fontSize: fontSize.secondary,
-    lineHeight: 20,
+
+  unavailableMenuText: {
+    fontSize: fontSize.label,
     color: colours.textSecondary,
   },
-  cancelListingButton: {
+
+  infoCard: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginTop: spacing.sm,
+    padding: spacing.md,
+    borderWidth: layout.borderWidth,
+    borderColor: colours.border,
+    borderRadius: layout.radius,
+    backgroundColor: colours.surface,
+  },
+
+  infoMark: {
+    width: 22,
+    height: 22,
+    marginRight: spacing.sm,
+    textAlign: 'center',
+    fontSize: fontSize.label,
+    fontWeight: fontWeight.bold,
+    lineHeight: 22,
+    color: colours.textInverse,
+    backgroundColor: colours.accent,
+    borderRadius: 11,
+  },
+
+  infoText: {
+    flex: 1,
+    fontSize: fontSize.label,
+    lineHeight: 18,
+    color: colours.textSecondary,
+  },
+
+  modalBackdrop: {
+    flex: 1,
+    justifyContent: 'center',
+    padding: layout.screenPadding,
+    backgroundColor: 'rgba(0, 0, 0, 0.42)',
+  },
+
+  modalCard: {
+    padding: spacing.lg,
+    borderRadius: layout.radius,
+    backgroundColor: colours.surface,
+  },
+
+  modalIcon: {
+    width: 42,
+    height: 42,
+    alignSelf: 'center',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.md,
+    borderRadius: 21,
+    backgroundColor: '#FEE2E2',
+  },
+
+  modalIconText: {
+    fontSize: fontSize.body,
+    fontWeight: fontWeight.bold,
+    color: colours.critical,
+  },
+
+  modalTitle: {
+    fontSize: fontSize.body,
+    fontWeight: fontWeight.bold,
+    color: colours.textPrimary,
+    textAlign: 'center',
+  },
+
+  modalDescription: {
+    marginTop: spacing.sm,
+    fontSize: fontSize.secondary,
+    lineHeight: 21,
+    color: colours.textSecondary,
+    textAlign: 'center',
+  },
+
+  modalActions: {
+    flexDirection: 'row',
+    marginTop: spacing.lg,
+  },
+
+  modalSecondaryButton: {
+    flex: 1,
     minHeight: layout.controlHeight,
-    marginTop: spacing.md,
+    marginRight: spacing.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: layout.borderWidth,
+    borderColor: colours.border,
+    borderRadius: layout.radius,
+    backgroundColor: colours.background,
+  },
+
+  modalSecondaryButtonText: {
+    fontSize: fontSize.secondary,
+    fontWeight: fontWeight.semibold,
+    color: colours.textPrimary,
+  },
+
+  modalDestructiveButton: {
+    flex: 1,
+    minHeight: layout.controlHeight,
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: layout.radius,
     backgroundColor: colours.critical,
   },
-  cancelListingButtonText: {
+
+  modalDestructiveButtonText: {
     fontSize: fontSize.secondary,
     fontWeight: fontWeight.semibold,
     color: colours.textInverse,
   },
+
   buttonDisabled: {
     opacity: 0.55,
   },
+
   buttonPressed: {
     opacity: 0.8,
   },

@@ -43,4 +43,5 @@ export type AdminStackParamList = {
   AdminListings: undefined;
   AdminRequests: undefined;
   AdminAssignments: undefined;
+  AdminUsers: undefined;
 };
