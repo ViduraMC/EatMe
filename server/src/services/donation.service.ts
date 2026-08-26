@@ -1,4 +1,9 @@
-import { Prisma, type ListingStatus } from '@prisma/client';
+import {
+  Prisma,
+  type AssignmentStatus,
+  type ListingStatus,
+  type RequestStatus,
+} from '@prisma/client';
 import { prisma } from '../config/prisma';
 import { ApiError } from '../utils/apiError';
 import {
@@ -414,5 +419,235 @@ export async function cancelListing(
     where: { listingId },
     data: { status: 'cancelled' },
     include: listingInclude,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Handover confirmation, donor side
+//
+// Sprint 2 design decision: the donor no longer accepts or rejects requests.
+// That moved to the Donation Coordinator, who already owns matching and
+// assignment. Confirming handover is the donor's only remaining active step
+// after posting, so it lives here in the donation module.
+//
+// These functions write DeliveryAssignment, which is the coordinator's table,
+// but only ever the two donor-owned pickup columns plus the status transition
+// below. They never touch request.status or any driver-owned column.
+// ---------------------------------------------------------------------------
+
+/** Everything the confirm-pickup screen needs, in one definition. */
+const assignmentInclude = {
+  request: {
+    include: {
+      listing: {
+        select: {
+          listingId: true,
+          donorId: true,
+          title: true,
+          pickupAddress: true,
+          pickupWindowStart: true,
+          pickupWindowEnd: true,
+        },
+      },
+      recipient: {
+        select: { userId: true, name: true, organisationName: true, phone: true },
+      },
+      items: {
+        include: {
+          item: {
+            select: { itemId: true, foodName: true, unit: true, category: true },
+          },
+        },
+      },
+    },
+  },
+  driver: { select: { userId: true, name: true, phone: true } },
+} satisfies Prisma.DeliveryAssignmentInclude;
+
+export type AssignmentForDonor = Prisma.DeliveryAssignmentGetPayload<{
+  include: typeof assignmentInclude;
+}>;
+
+/**
+ * Assignments waiting on this donor's pickup confirmation.
+ *
+ * "Waiting on the donor" means a driver has accepted the job and the donor has
+ * not yet confirmed the food changed hands. Declined and cancelled assignments
+ * are excluded, because there is nothing left to hand over.
+ */
+export async function listAssignmentsPendingDonorConfirmation(
+  donorId: number,
+): Promise<AssignmentForDonor[]> {
+  return prisma.deliveryAssignment.findMany({
+    where: {
+      pickupDonorConfirmedAt: null,
+      status: { in: ['accepted', 'in_transit'] },
+      request: { listing: { donorId } },
+    },
+    include: assignmentInclude,
+    orderBy: { assignedAt: 'asc' },
+  });
+}
+
+/**
+ * Loads an assignment and checks it belongs to one of this donor's listings.
+ *
+ * 404 rather than 403 for anyone else, matching the rest of this module: a 403
+ * would confirm that an assignment with that id exists.
+ */
+async function getDonorAssignment(
+  assignmentId: number,
+  donorId: number,
+): Promise<AssignmentForDonor> {
+  const assignment = await prisma.deliveryAssignment.findUnique({
+    where: { assignmentId },
+    include: assignmentInclude,
+  });
+
+  if (!assignment || assignment.request.listing.donorId !== donorId) {
+    throw ApiError.notFound('That delivery does not exist');
+  }
+
+  return assignment;
+}
+
+/**
+ * Decides what status an assignment should hold after a pickup confirmation.
+ *
+ * THE RULE, in one place: an assignment becomes in_transit only when BOTH
+ * sides have confirmed the pickup. One side alone does not demonstrate the
+ * food changed hands, and a handover is only trustworthy if both parties say
+ * it happened.
+ *
+ * Exported so the driver module can apply the identical rule from its own
+ * side rather than copying it.
+ */
+export function statusAfterPickupConfirmation(assignment: {
+  status: AssignmentStatus;
+  pickupDonorConfirmedAt: Date | null;
+  pickupDriverConfirmedAt: Date | null;
+}): AssignmentStatus {
+  // Terminal states are never recomputed from timestamps.
+  if (
+    assignment.status === 'completed' ||
+    assignment.status === 'declined' ||
+    assignment.status === 'cancelled'
+  ) {
+    return assignment.status;
+  }
+
+  const bothConfirmed =
+    assignment.pickupDonorConfirmedAt !== null &&
+    assignment.pickupDriverConfirmedAt !== null;
+
+  return bothConfirmed ? 'in_transit' : assignment.status;
+}
+
+export interface ConfirmPickupInput {
+  /** Optional free text written to pickup_notes. */
+  notes?: string | null;
+}
+
+/**
+ * The donor confirms the food has been handed to the driver.
+ *
+ * Writes pickup_donor_confirmed_at and, when the driver has already confirmed,
+ * moves the assignment to in_transit via statusAfterPickupConfirmation.
+ *
+ * The timestamp and the status change go in a single update: a timestamp
+ * written without the matching status change would leave a delivery both
+ * parties confirmed that never left "accepted", and nothing downstream would
+ * notice.
+ */
+export async function confirmPickupAsDonor(
+  assignmentId: number,
+  donorId: number,
+  input: ConfirmPickupInput = {},
+): Promise<AssignmentForDonor> {
+  const existing = await getDonorAssignment(assignmentId, donorId);
+
+  // Reject rather than silently overwriting. The first timestamp records when
+  // the handover actually happened; overwriting it destroys that evidence.
+  if (existing.pickupDonorConfirmedAt) {
+    throw ApiError.badRequest(
+      'You have already confirmed this pickup. It cannot be confirmed twice.',
+    );
+  }
+
+  if (existing.status === 'declined' || existing.status === 'cancelled') {
+    throw ApiError.badRequest(
+      'This delivery is no longer active, so there is nothing to confirm',
+    );
+  }
+  if (existing.status === 'completed') {
+    throw ApiError.badRequest('This delivery is already complete');
+  }
+  if (existing.status === 'pending_driver') {
+    throw ApiError.badRequest(
+      'The driver has not accepted this delivery yet, so there is nothing to hand over',
+    );
+  }
+
+  const confirmedAt = new Date();
+  const nextStatus = statusAfterPickupConfirmation({
+    status: existing.status,
+    pickupDonorConfirmedAt: confirmedAt,
+    pickupDriverConfirmedAt: existing.pickupDriverConfirmedAt,
+  });
+
+  return prisma.deliveryAssignment.update({
+    where: { assignmentId },
+    data: {
+      pickupDonorConfirmedAt: confirmedAt,
+      status: nextStatus,
+      ...(input.notes ? { pickupNotes: input.notes } : {}),
+    },
+    include: assignmentInclude,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Incoming requests, READ ONLY
+//
+// The donor can see who has asked for their food but cannot act on it. The
+// Donation Coordinator accepts and rejects. Nothing below writes
+// request.status, and nothing here should ever start to.
+// ---------------------------------------------------------------------------
+
+const incomingRequestInclude = {
+  listing: { select: { listingId: true, title: true, status: true } },
+  recipient: {
+    select: { userId: true, name: true, organisationName: true, phone: true },
+  },
+  items: {
+    include: {
+      item: {
+        select: { itemId: true, foodName: true, unit: true, category: true },
+      },
+    },
+  },
+} satisfies Prisma.DonationRequestInclude;
+
+export type IncomingRequest = Prisma.DonationRequestGetPayload<{
+  include: typeof incomingRequestInclude;
+}>;
+
+/**
+ * Requests made against this donor's listings.
+ *
+ * Scoped through listing.donorId, never through anything the client sends, so
+ * a donor cannot reach another donor's requests by guessing an id.
+ */
+export async function listIncomingRequests(
+  donorId: number,
+  status?: RequestStatus,
+): Promise<IncomingRequest[]> {
+  return prisma.donationRequest.findMany({
+    where: {
+      listing: { donorId },
+      ...(status ? { status } : {}),
+    },
+    include: incomingRequestInclude,
+    orderBy: { createdAt: 'desc' },
   });
 }
