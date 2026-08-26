@@ -103,16 +103,15 @@ export function CoordinatorHomeScreen() {
         </View>
       </View>
 
-      {/* Section Header with green Drivers List button between stats cards and queue list */}
-      <View style={styles.sectionHeader}>
-        <Text style={styles.sectionTitle}>Delivery Queue</Text>
-        <Button
-          label="Drivers List"
-          variant="primary"
-          onPress={() => navigation.navigate('DriversList')}
-          style={styles.driversButton}
-        />
-      </View>
+      {/* Full width green Drivers List button under cards section */}
+      <Button
+        label="Drivers List"
+        variant="primary"
+        onPress={() => navigation.navigate('DriversList')}
+        style={styles.fullWidthButton}
+      />
+
+      <Text style={styles.sectionTitle}>Delivery Queue</Text>
 
       <FlatList
         data={queue}
@@ -230,20 +229,14 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: spacing.xs,
   },
-  sectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: spacing.sm,
+  fullWidthButton: {
+    marginBottom: spacing.md,
   },
   sectionTitle: {
     fontSize: fontSize.heading,
     fontWeight: fontWeight.semibold,
     color: colours.textPrimary,
-  },
-  driversButton: {
-    height: 36,
-    paddingHorizontal: spacing.md,
+    marginBottom: spacing.sm,
   },
   emptyWrap: { flexGrow: 1, justifyContent: 'center' },
   cardTop: {
