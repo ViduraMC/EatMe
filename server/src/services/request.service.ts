@@ -185,3 +185,46 @@ export async function listMyRequests(
     orderBy: { createdAt: 'desc' },
   });
 }
+
+/**
+ * The recipient withdraws a request they no longer need.
+ *
+ * Only while still pending. Once the coordinator has accepted or rejected it,
+ * the outcome is recorded and cancelling would rewrite history. Nothing is
+ * deleted; the row stays with status cancelled.
+ */
+
+export async function cancelRequest(
+  requestId: number,
+  recipientId: number,
+): Promise<RequestWithItems> {
+  const request = await prisma.donationRequest.findUnique({
+    where: { requestId },
+    select: { requestId: true, recipientId: true, status: true },
+  });
+
+  if (!request || request.recipientId !== recipientId) {
+    throw ApiError.notFound('That request does not exist');
+  }
+
+  if (request.status === 'cancelled') {
+    // Already in the target state. Returning it rather than erroring keeps the
+    // endpoint idempotent, so a double tap on a slow connection is harmless.
+    return prisma.donationRequest.findUniqueOrThrow({
+      where: { requestId },
+      include: requestInclude,
+    });
+  }
+
+  if (request.status !== 'pending') {
+    throw ApiError.badRequest(
+      `This request was already ${request.status} and can no longer be cancelled`,
+    );
+  }
+
+  return prisma.donationRequest.update({
+    where: { requestId },
+    data: { status: 'cancelled' },
+    include: requestInclude,
+  });
+}
