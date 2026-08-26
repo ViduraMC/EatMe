@@ -17,6 +17,8 @@ import { ConfirmPickupScreen } from '../screens/donor/ConfirmPickupScreen';
 import { RecipientHomeScreen } from '../screens/recipient/RecipientHomeScreen';
 import { CoordinatorHomeScreen } from '../screens/coordinator/CoordinatorHomeScreen';
 import { DriversListScreen } from '../screens/coordinator/DriversListScreen';
+import { CreateAssignmentScreen } from '../screens/coordinator/CreateAssignmentScreen';
+import { AssignmentsListScreen } from '../screens/coordinator/AssignmentsListScreen';
 import { DriverHomeScreen } from '../screens/driver/DriverHomeScreen';
 import { AdminHomeScreen } from '../screens/admin/AdminHomeScreen';
 
@@ -132,6 +134,16 @@ function CoordinatorNavigator() {
         name="DriversList"
         component={DriversListScreen}
         options={{ title: 'Drivers' }}
+      />
+      <CoordinatorStack.Screen
+        name="CreateAssignment"
+        component={CreateAssignmentScreen}
+        options={{ title: 'Assign Driver' }}
+      />
+      <CoordinatorStack.Screen
+        name="AssignmentsList"
+        component={AssignmentsListScreen}
+        options={{ title: 'Assignments' }}
       />
     </CoordinatorStack.Navigator>
   );

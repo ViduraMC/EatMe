@@ -140,3 +140,61 @@ export interface DonorAssignment {
 export interface ConfirmPickupPayload {
   notes?: string | null;
 }
+
+// ── US-C02: Coordinator creates / rejects assignments ─────────────────────────
+
+export interface CreateAssignmentPayload {
+  requestId: number;
+  driverId: number;
+  noteToDriver?: string | null;
+}
+
+export interface RejectRequestPayload {
+  rejectionReason?: string | null;
+}
+
+/** Driver summary embedded inside a CoordinatorAssignment. */
+export interface AssignmentDriverSummary {
+  userId: number;
+  name: string;
+  phone: string;
+  isAvailable: boolean;
+}
+
+/** A delivery assignment as the coordinator sees it (full status tracking). */
+export interface CoordinatorAssignment {
+  assignmentId: number;
+  requestId: number;
+  coordinatorId: number;
+  driverId: number;
+  noteToDriver: string | null;
+  status: AssignmentStatus;
+  declineReason: string | null;
+  assignedAt: string;
+  respondedAt: string | null;
+  pickupDonorConfirmedAt: string | null;
+  pickupDriverConfirmedAt: string | null;
+  pickupNotes: string | null;
+  dropoffDriverConfirmedAt: string | null;
+  dropoffRecipientConfirmedAt: string | null;
+  dropoffNotes: string | null;
+  completedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  driver: AssignmentDriverSummary;
+  request: {
+    requestId: number;
+    status: RequestStatus;
+    message: string | null;
+    recipient: RequesterSummary;
+    listing: {
+      listingId: number;
+      title: string;
+      pickupAddress: string;
+      pickupWindowStart: string;
+      pickupWindowEnd: string;
+      donor: RequesterSummary;
+    };
+    items: RequestedItem[];
+  };
+}

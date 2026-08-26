@@ -1,10 +1,14 @@
 import React, { useCallback, useState } from 'react';
-import { ActivityIndicator, FlatList, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, FlatList, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
 import { Button, Card, EmptyState, ScreenContainer, StatusPill } from '../../components';
-import { fetchAssignmentQueue, fetchCoordinatorStats } from '../../api/assignments.api';
+import {
+  fetchAssignmentQueue,
+  fetchCoordinatorStats,
+  rejectRequest,
+} from '../../api/assignments.api';
 import { getErrorMessage } from '../../api/client';
 import { useAuth } from '../../context/AuthContext';
 import { colours, fontSize, fontWeight, spacing } from '../../constants/theme';
@@ -26,6 +30,7 @@ export function CoordinatorHomeScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [rejectingId, setRejectingId] = useState<number | null>(null);
 
   const load = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
@@ -51,6 +56,37 @@ export function CoordinatorHomeScreen() {
     }, [load]),
   );
 
+  const handleReject = useCallback(
+    (requestId: number, listingTitle: string) => {
+      Alert.prompt(
+        'Reject Request',
+        `Reject request for "${listingTitle}"?\nOptionally enter a reason:`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Reject',
+            style: 'destructive',
+            onPress: async (reason?: string) => {
+              setRejectingId(requestId);
+              try {
+                await rejectRequest(requestId, {
+                  rejectionReason: reason?.trim() || null,
+                });
+                await load();
+              } catch (err) {
+                Alert.alert('Error', getErrorMessage(err));
+              } finally {
+                setRejectingId(null);
+              }
+            },
+          },
+        ],
+        'plain-text',
+      );
+    },
+    [load],
+  );
+
   if (loading) {
     return (
       <ScreenContainer>
@@ -66,7 +102,7 @@ export function CoordinatorHomeScreen() {
       {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerText}>
-          <Text style={styles.greeting}>{user?.organisationName ?? user?.name}</Text>
+          <Text style={styles.headerTitle}>Coordinator Dashboard</Text>
           <Text style={styles.subtitle}>
             {queue.length === 0
               ? 'No pending deliveries'
@@ -103,7 +139,7 @@ export function CoordinatorHomeScreen() {
         </View>
       </View>
 
-      {/* Full width green Drivers List button under cards section */}
+      {/* Full width green Drivers List button under cards */}
       <Button
         label="Drivers List"
         variant="primary"
@@ -111,7 +147,16 @@ export function CoordinatorHomeScreen() {
         style={styles.fullWidthButton}
       />
 
-      <Text style={styles.sectionTitle}>Delivery Queue</Text>
+      {/* Section header row */}
+      <View style={styles.sectionHeader}>
+        <Text style={styles.sectionTitle}>Delivery Queue</Text>
+        <Button
+          label="All Assignments"
+          variant="secondary"
+          onPress={() => navigation.navigate('AssignmentsList')}
+          style={styles.assignmentsButton}
+        />
+      </View>
 
       <FlatList
         data={queue}
@@ -138,6 +183,8 @@ export function CoordinatorHomeScreen() {
               .map((i) => i.item.effectiveExpiry)
               .filter((d): d is string => !!d)
               .sort()[0] ?? null;
+
+          const isRejecting = rejectingId === item.requestId;
 
           return (
             <Card>
@@ -171,6 +218,26 @@ export function CoordinatorHomeScreen() {
                   Expires: {formatTimeUntil(soonestItemExpiry)}
                 </Text>
               )}
+
+              {/* US-C02 action buttons */}
+              <View style={styles.cardActions}>
+                <Button
+                  label="Assign Driver"
+                  variant="primary"
+                  onPress={() =>
+                    navigation.navigate('CreateAssignment', {
+                      requestId: item.requestId,
+                    })
+                  }
+                  style={styles.assignButton}
+                />
+                <Button
+                  label={isRejecting ? 'Rejecting…' : 'Reject'}
+                  variant="secondary"
+                  onPress={() => handleReject(item.requestId, item.listing.title)}
+                  style={styles.rejectButton}
+                />
+              </View>
             </Card>
           );
         }}
@@ -187,6 +254,12 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginBottom: spacing.md,
     gap: spacing.sm,
+  },
+
+  headerTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#000000',
   },
   headerText: { flexShrink: 1 },
   greeting: {
@@ -232,11 +305,20 @@ const styles = StyleSheet.create({
   fullWidthButton: {
     marginBottom: spacing.md,
   },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacing.sm,
+  },
   sectionTitle: {
     fontSize: fontSize.heading,
     fontWeight: fontWeight.semibold,
     color: colours.textPrimary,
-    marginBottom: spacing.sm,
+  },
+  assignmentsButton: {
+    height: 36,
+    paddingHorizontal: spacing.md,
   },
   emptyWrap: { flexGrow: 1, justifyContent: 'center' },
   cardTop: {
@@ -257,4 +339,11 @@ const styles = StyleSheet.create({
     color: colours.textSecondary,
     lineHeight: 20,
   },
+  cardActions: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginTop: spacing.sm,
+  },
+  assignButton: { flex: 1 },
+  rejectButton: { flex: 1 },
 });
