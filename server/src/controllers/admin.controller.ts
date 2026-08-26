@@ -1,14 +1,34 @@
 import type { Request, Response } from 'express';
+import { z } from 'zod';
+
 import {
   cancelAdminListing,
+  createAdminStaff,
   getAdminAssignments,
   getAdminListings,
   getAdminRequests,
   getAdminStats,
   getAdminUsers,
+  updateAdminStaff,
   updateAdminUserStatus,
 } from '../services/admin.service';
 import { sendSuccess } from '../utils/apiResponse';
+
+const createStaffSchema = z.object({
+  name: z.string().trim().min(2).max(100),
+  email: z.string().trim().toLowerCase().email().max(150),
+  password: z.string().min(8).max(72),
+  phone: z.string().trim().min(9).max(20),
+  address: z.string().trim().min(5),
+  role: z.enum(['coordinator', 'driver']),
+});
+
+const updateStaffSchema = z.object({
+  name: z.string().trim().min(2).max(100),
+  email: z.string().trim().toLowerCase().email().max(150),
+  phone: z.string().trim().min(9).max(20),
+  address: z.string().trim().min(5),
+});
 
 /** GET /api/admin/stats */
 export async function adminStats(_req: Request, res: Response): Promise<void> {
@@ -22,6 +42,65 @@ export async function adminUsers(_req: Request, res: Response): Promise<void> {
   const users = await getAdminUsers();
 
   sendSuccess(res, { users });
+}
+
+/** POST /api/admin/users/staff */
+export async function adminCreateStaff(req: Request, res: Response): Promise<void> {
+  const input = createStaffSchema.parse(req.body);
+
+  const user = await createAdminStaff(input);
+
+  sendSuccess(res, { user }, 201);
+}
+
+/** PUT /api/admin/users/:userId/staff */
+export async function adminUpdateStaff(req: Request, res: Response): Promise<void> {
+  const userId = Number(req.params.userId);
+
+  if (!Number.isInteger(userId) || userId <= 0) {
+    res.status(400).json({
+      success: false,
+      message: 'Invalid user ID',
+    });
+    return;
+  }
+
+  const input = updateStaffSchema.parse(req.body);
+
+  const user = await updateAdminStaff(userId, input);
+
+  sendSuccess(res, { user });
+}
+
+/** PATCH /api/admin/users/:userId/status */
+export async function adminUpdateUserStatus(req: Request, res: Response): Promise<void> {
+  const userId = Number(req.params.userId);
+  const status = req.body?.status;
+
+  if (!Number.isInteger(userId) || userId <= 0) {
+    res.status(400).json({
+      success: false,
+      message: 'Invalid user ID',
+    });
+    return;
+  }
+
+  if (
+    status !== 'pending' &&
+    status !== 'active' &&
+    status !== 'inactive' &&
+    status !== 'rejected'
+  ) {
+    res.status(400).json({
+      success: false,
+      message: 'Invalid user status',
+    });
+    return;
+  }
+
+  const user = await updateAdminUserStatus(userId, status);
+
+  sendSuccess(res, { user });
 }
 
 /** GET /api/admin/listings */
@@ -60,30 +139,4 @@ export async function adminAssignments(_req: Request, res: Response): Promise<vo
   const assignments = await getAdminAssignments();
 
   sendSuccess(res, { assignments });
-}
-
-/** PATCH /api/admin/users/:userId/status */
-export async function adminUpdateUserStatus(req: Request, res: Response): Promise<void> {
-  const userId = Number(req.params.userId);
-  const status = req.body?.status;
-
-  if (!Number.isInteger(userId) || userId <= 0) {
-    res.status(400).json({
-      success: false,
-      message: 'Invalid user ID',
-    });
-    return;
-  }
-
-  if (status !== 'active' && status !== 'inactive') {
-    res.status(400).json({
-      success: false,
-      message: 'Status must be active or inactive',
-    });
-    return;
-  }
-
-  const user = await updateAdminUserStatus(userId, status);
-
-  sendSuccess(res, { user });
 }

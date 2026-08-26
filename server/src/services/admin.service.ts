@@ -1,5 +1,47 @@
+import bcrypt from 'bcryptjs';
+
 import { prisma } from '../config/prisma';
 import { ApiError } from '../utils/apiError';
+
+const ADMIN_STAFF_PASSWORD_ROUNDS = 10;
+
+const adminUserSelect = {
+  userId: true,
+  name: true,
+  email: true,
+  phone: true,
+  address: true,
+  role: true,
+  organisationName: true,
+  isAvailable: true,
+  status: true,
+  createdAt: true,
+  updatedAt: true,
+  _count: {
+    select: {
+      listings: true,
+      requests: true,
+      coordinatedAssignments: true,
+      drivenAssignments: true,
+    },
+  },
+} as const;
+
+export interface CreateAdminStaffInput {
+  name: string;
+  email: string;
+  password: string;
+  phone: string;
+  address: string;
+  role: 'coordinator' | 'driver';
+}
+
+export interface UpdateAdminStaffInput {
+  name: string;
+  email: string;
+  phone: string;
+  address: string;
+}
 
 export async function getAdminStats() {
   const [
@@ -201,27 +243,93 @@ export async function getAdminUsers() {
     orderBy: {
       createdAt: 'desc',
     },
+    select: adminUserSelect,
+  });
+}
+
+export async function createAdminStaff(input: CreateAdminStaffInput) {
+  const email = input.email.trim().toLowerCase();
+
+  const existing = await prisma.user.findUnique({
+    where: {
+      email,
+    },
     select: {
       userId: true,
-      name: true,
-      email: true,
-      phone: true,
-      address: true,
+    },
+  });
+
+  if (existing) {
+    throw ApiError.conflict('An account with that email already exists');
+  }
+
+  const passwordHash = await bcrypt.hash(input.password, ADMIN_STAFF_PASSWORD_ROUNDS);
+
+  return prisma.user.create({
+    data: {
+      name: input.name.trim(),
+      email,
+      passwordHash,
+      phone: input.phone.trim(),
+      address: input.address.trim(),
+      role: input.role,
+      status: 'active',
+      isAvailable: input.role === 'driver',
+    },
+    select: adminUserSelect,
+  });
+}
+
+export async function updateAdminStaff(userId: number, input: UpdateAdminStaffInput) {
+  const user = await prisma.user.findUnique({
+    where: {
+      userId,
+    },
+    select: {
+      userId: true,
       role: true,
-      organisationName: true,
-      isAvailable: true,
-      status: true,
-      createdAt: true,
-      updatedAt: true,
-      _count: {
-        select: {
-          listings: true,
-          requests: true,
-          coordinatedAssignments: true,
-          drivenAssignments: true,
-        },
+    },
+  });
+
+  if (!user) {
+    throw ApiError.notFound('User not found');
+  }
+
+  if (user.role !== 'coordinator' && user.role !== 'driver') {
+    throw ApiError.conflict(
+      'Only coordinator and driver accounts can be edited by an administrator',
+    );
+  }
+
+  const email = input.email.trim().toLowerCase();
+
+  const existingEmail = await prisma.user.findFirst({
+    where: {
+      email,
+      NOT: {
+        userId,
       },
     },
+    select: {
+      userId: true,
+    },
+  });
+
+  if (existingEmail) {
+    throw ApiError.conflict('An account with that email already exists');
+  }
+
+  return prisma.user.update({
+    where: {
+      userId,
+    },
+    data: {
+      name: input.name.trim(),
+      email,
+      phone: input.phone.trim(),
+      address: input.address.trim(),
+    },
+    select: adminUserSelect,
   });
 }
 
@@ -279,7 +387,7 @@ export async function cancelAdminListing(listingId: number) {
 
 export async function updateAdminUserStatus(
   userId: number,
-  status: 'active' | 'inactive',
+  status: 'pending' | 'active' | 'inactive' | 'rejected',
 ) {
   const user = await prisma.user.findUnique({
     where: {
@@ -297,7 +405,29 @@ export async function updateAdminUserStatus(
   }
 
   if (user.role === 'admin') {
-    throw ApiError.conflict('Administrator accounts cannot be deactivated here');
+    throw ApiError.conflict('Administrator account status cannot be changed here');
+  }
+
+  if (status === 'pending') {
+    throw ApiError.conflict('A user cannot be manually returned to pending status');
+  }
+
+  if (status === 'rejected') {
+    if (user.role !== 'recipient') {
+      throw ApiError.conflict('Only recipient registrations can be rejected');
+    }
+
+    if (user.status !== 'pending') {
+      throw ApiError.conflict('Only pending recipient registrations can be rejected');
+    }
+  }
+
+  if (user.status === 'pending' && status === 'inactive') {
+    throw ApiError.conflict('A pending recipient must be approved or rejected first');
+  }
+
+  if (user.status === 'rejected' && status === 'inactive') {
+    throw ApiError.conflict('A rejected recipient cannot be deactivated');
   }
 
   if (user.status === status) {
@@ -311,26 +441,6 @@ export async function updateAdminUserStatus(
     data: {
       status,
     },
-    select: {
-      userId: true,
-      name: true,
-      email: true,
-      phone: true,
-      address: true,
-      role: true,
-      organisationName: true,
-      isAvailable: true,
-      status: true,
-      createdAt: true,
-      updatedAt: true,
-      _count: {
-        select: {
-          listings: true,
-          requests: true,
-          coordinatedAssignments: true,
-          drivenAssignments: true,
-        },
-      },
-    },
+    select: adminUserSelect,
   });
 }

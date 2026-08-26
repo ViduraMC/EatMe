@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Modal,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -41,12 +42,31 @@ type UsersResponse = ApiSuccess<{
   users: AdminUser[];
 }>;
 
-type UpdateUserResponse = ApiSuccess<{
+type UserResponse = ApiSuccess<{
   user: AdminUser;
 }>;
 
 type RoleFilter = 'all' | UserRole;
 type StatusFilter = 'all' | UserStatus;
+type StaffRole = 'coordinator' | 'driver';
+
+interface StaffFormState {
+  name: string;
+  email: string;
+  phone: string;
+  address: string;
+  password: string;
+  role: StaffRole;
+}
+
+const EMPTY_STAFF_FORM: StaffFormState = {
+  name: '',
+  email: '',
+  phone: '',
+  address: '',
+  password: '',
+  role: 'coordinator',
+};
 
 const roleFilters: Array<{
   label: string;
@@ -65,12 +85,18 @@ const statusFilters: Array<{
   value: StatusFilter;
 }> = [
   { label: 'All', value: 'all' },
+  { label: 'Pending', value: 'pending' },
   { label: 'Active', value: 'active' },
   { label: 'Inactive', value: 'inactive' },
+  { label: 'Rejected', value: 'rejected' },
 ];
 
 function formatRole(role: UserRole): string {
   return role.charAt(0).toUpperCase() + role.slice(1);
+}
+
+function formatStatus(status: UserStatus): string {
+  return status.charAt(0).toUpperCase() + status.slice(1);
 }
 
 function getUserActivityText(user: AdminUser): string | null {
@@ -101,6 +127,10 @@ function getUserActivityText(user: AdminUser): string | null {
   return null;
 }
 
+function isStaffUser(user: AdminUser): user is AdminUser & { role: StaffRole } {
+  return user.role === 'coordinator' || user.role === 'driver';
+}
+
 export function AdminUsersScreen() {
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -111,6 +141,12 @@ export function AdminUsersScreen() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [updatingUserId, setUpdatingUserId] = useState<number | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  const [staffModalVisible, setStaffModalVisible] = useState(false);
+  const [editingStaff, setEditingStaff] = useState<AdminUser | null>(null);
+  const [staffForm, setStaffForm] = useState<StaffFormState>(EMPTY_STAFF_FORM);
+  const [staffFormError, setStaffFormError] = useState<string | null>(null);
+  const [isSavingStaff, setIsSavingStaff] = useState(false);
 
   const loadUsers = useCallback(async (showFullLoader = false) => {
     if (showFullLoader) {
@@ -145,7 +181,6 @@ export function AdminUsersScreen() {
 
     return users.filter((user) => {
       const matchesRole = roleFilter === 'all' || user.role === roleFilter;
-
       const matchesStatus = statusFilter === 'all' || user.status === statusFilter;
 
       if (!matchesRole || !matchesStatus) {
@@ -162,42 +197,90 @@ export function AdminUsersScreen() {
         user.phone.toLowerCase().includes(normalisedQuery) ||
         user.address.toLowerCase().includes(normalisedQuery) ||
         user.role.toLowerCase().includes(normalisedQuery) ||
+        user.status.toLowerCase().includes(normalisedQuery) ||
         (user.organisationName?.toLowerCase().includes(normalisedQuery) ?? false)
       );
     });
   }, [roleFilter, searchQuery, statusFilter, users]);
+
+  const replaceUser = useCallback((updatedUser: AdminUser) => {
+    setUsers((currentUsers) =>
+      currentUsers.map((currentUser) =>
+        currentUser.userId === updatedUser.userId ? updatedUser : currentUser,
+      ),
+    );
+  }, []);
 
   const updateUserStatus = useCallback(
     async (user: AdminUser, nextStatus: UserStatus) => {
       setUpdatingUserId(user.userId);
 
       try {
-        const response = await api.patch<UpdateUserResponse>(
+        const response = await api.patch<UserResponse>(
           `/admin/users/${user.userId}/status`,
           {
             status: nextStatus,
           },
         );
 
-        const updatedUser = response.data.data.user;
-
-        setUsers((currentUsers) =>
-          currentUsers.map((currentUser) =>
-            currentUser.userId === updatedUser.userId ? updatedUser : currentUser,
-          ),
-        );
+        replaceUser(response.data.data.user);
       } catch (error) {
         Alert.alert('Could not update user', getErrorMessage(error));
       } finally {
         setUpdatingUserId(null);
       }
     },
-    [],
+    [replaceUser],
+  );
+
+  const approveRecipient = useCallback(
+    (user: AdminUser) => {
+      Alert.alert(
+        'Approve recipient?',
+        `Approve ${user.name}'s recipient account? They will be able to sign in after approval.`,
+        [
+          {
+            text: 'Cancel',
+            style: 'cancel',
+          },
+          {
+            text: 'Approve',
+            onPress: () => {
+              void updateUserStatus(user, 'active');
+            },
+          },
+        ],
+      );
+    },
+    [updateUserStatus],
+  );
+
+  const rejectRecipient = useCallback(
+    (user: AdminUser) => {
+      Alert.alert('Reject recipient?', `Reject ${user.name}'s recipient registration?`, [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Reject',
+          style: 'destructive',
+          onPress: () => {
+            void updateUserStatus(user, 'rejected');
+          },
+        },
+      ]);
+    },
+    [updateUserStatus],
   );
 
   const confirmStatusChange = useCallback(
     (user: AdminUser) => {
-      if (user.role === 'admin') {
+      if (
+        user.role === 'admin' ||
+        user.status === 'pending' ||
+        user.status === 'rejected'
+      ) {
         return;
       }
 
@@ -222,6 +305,113 @@ export function AdminUsersScreen() {
     [updateUserStatus],
   );
 
+  const openCreateStaff = useCallback(() => {
+    setEditingStaff(null);
+    setStaffForm(EMPTY_STAFF_FORM);
+    setStaffFormError(null);
+    setStaffModalVisible(true);
+  }, []);
+
+  const openEditStaff = useCallback((user: AdminUser) => {
+    if (!isStaffUser(user)) {
+      return;
+    }
+
+    setEditingStaff(user);
+    setStaffForm({
+      name: user.name,
+      email: user.email,
+      phone: user.phone,
+      address: user.address,
+      password: '',
+      role: user.role,
+    });
+    setStaffFormError(null);
+    setStaffModalVisible(true);
+  }, []);
+
+  const closeStaffModal = useCallback(() => {
+    if (isSavingStaff) {
+      return;
+    }
+
+    setStaffModalVisible(false);
+    setEditingStaff(null);
+    setStaffForm(EMPTY_STAFF_FORM);
+    setStaffFormError(null);
+  }, [isSavingStaff]);
+
+  const saveStaff = useCallback(async () => {
+    setStaffFormError(null);
+
+    const name = staffForm.name.trim();
+    const email = staffForm.email.trim();
+    const phone = staffForm.phone.trim();
+    const address = staffForm.address.trim();
+
+    if (!name || !email || !phone || !address) {
+      setStaffFormError('Fill in every required field.');
+      return;
+    }
+
+    if (!email.includes('@')) {
+      setStaffFormError('Enter a valid email address.');
+      return;
+    }
+
+    if (!editingStaff && staffForm.password.length < 8) {
+      setStaffFormError('Password must be at least 8 characters.');
+      return;
+    }
+
+    setIsSavingStaff(true);
+
+    try {
+      if (editingStaff) {
+        const response = await api.put<UserResponse>(
+          `/admin/users/${editingStaff.userId}/staff`,
+          {
+            name,
+            email,
+            phone,
+            address,
+          },
+        );
+
+        replaceUser(response.data.data.user);
+
+        setStaffModalVisible(false);
+        setEditingStaff(null);
+        setStaffForm(EMPTY_STAFF_FORM);
+
+        Alert.alert('Staff updated', 'The staff account was updated successfully.');
+      } else {
+        const response = await api.post<UserResponse>('/admin/users/staff', {
+          name,
+          email,
+          password: staffForm.password,
+          phone,
+          address,
+          role: staffForm.role,
+        });
+
+        setUsers((currentUsers) => [response.data.data.user, ...currentUsers]);
+
+        setStaffModalVisible(false);
+        setStaffForm(EMPTY_STAFF_FORM);
+
+        Alert.alert(
+          'Staff account created',
+          `${formatRole(response.data.data.user.role)} account created successfully.`,
+        );
+      }
+    } catch (error) {
+      setStaffFormError(getErrorMessage(error));
+    } finally {
+      setIsSavingStaff(false);
+    }
+  }, [editingStaff, replaceUser, staffForm]);
+
   if (isLoading) {
     return (
       <View style={styles.centeredState}>
@@ -232,234 +422,582 @@ export function AdminUsersScreen() {
   }
 
   return (
-    <ScrollView
-      style={styles.screen}
-      contentContainerStyle={styles.content}
-      keyboardShouldPersistTaps="handled"
-      refreshControl={
-        <RefreshControl
-          refreshing={isRefreshing}
-          onRefresh={handleRefresh}
-          tintColor={colours.accent}
-        />
-      }
-    >
-      <Text style={styles.title}>Users</Text>
-
-      <TextInput
-        value={searchQuery}
-        onChangeText={setSearchQuery}
-        placeholder="Search users"
-        placeholderTextColor={colours.textSecondary}
-        style={styles.searchInput}
-        autoCapitalize="none"
-        autoCorrect={false}
-        returnKeyType="search"
-      />
-
+    <>
       <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.filterRow}
-        style={styles.roleFilterScroll}
+        style={styles.screen}
+        contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled"
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefreshing}
+            onRefresh={handleRefresh}
+            tintColor={colours.accent}
+          />
+        }
       >
-        {roleFilters.map((filter) => {
-          const selected = roleFilter === filter.value;
-
-          return (
-            <Pressable
-              key={filter.value}
-              accessibilityRole="button"
-              accessibilityState={{ selected }}
-              onPress={() => setRoleFilter(filter.value)}
-              style={({ pressed }) => [
-                styles.filterChip,
-                selected && styles.filterChipSelected,
-                pressed && styles.buttonPressed,
-              ]}
-            >
-              <Text
-                style={[styles.filterChipText, selected && styles.filterChipTextSelected]}
-              >
-                {filter.label}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </ScrollView>
-
-      <View style={styles.statusRow}>
-        {statusFilters.map((filter) => {
-          const selected = statusFilter === filter.value;
-
-          return (
-            <Pressable
-              key={filter.value}
-              accessibilityRole="button"
-              accessibilityState={{ selected }}
-              onPress={() => setStatusFilter(filter.value)}
-              style={({ pressed }) => [
-                styles.statusFilter,
-                selected && styles.statusFilterSelected,
-                pressed && styles.buttonPressed,
-              ]}
-            >
-              <Text
-                style={[
-                  styles.statusFilterText,
-                  selected && styles.statusFilterTextSelected,
-                ]}
-              >
-                {filter.label}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </View>
-
-      {errorMessage ? (
-        <View style={styles.errorCard}>
-          <Text style={styles.errorTitle}>Could not load users</Text>
-
-          <Text style={styles.errorMessage}>{errorMessage}</Text>
+        <View style={styles.titleRow}>
+          <View style={styles.titleBlock}>
+            <Text style={styles.title}>Users</Text>
+            <Text style={styles.subtitle}>
+              Manage accounts, approvals and platform staff.
+            </Text>
+          </View>
 
           <Pressable
             accessibilityRole="button"
-            style={({ pressed }) => [styles.retryButton, pressed && styles.buttonPressed]}
-            onPress={() => {
-              void loadUsers(true);
-            }}
+            onPress={openCreateStaff}
+            style={({ pressed }) => [
+              styles.addStaffButton,
+              pressed && styles.buttonPressed,
+            ]}
           >
-            <Text style={styles.retryButtonText}>Try again</Text>
+            <Text style={styles.addStaffButtonText}>+ Staff</Text>
           </Pressable>
         </View>
-      ) : null}
 
-      {!errorMessage && filteredUsers.length === 0 ? (
-        <View style={styles.emptyCard}>
-          <Text style={styles.emptyTitle}>No users found</Text>
+        <TextInput
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+          placeholder="Search users"
+          placeholderTextColor={colours.textSecondary}
+          style={styles.searchInput}
+          autoCapitalize="none"
+          autoCorrect={false}
+          returnKeyType="search"
+        />
 
-          <Text style={styles.emptyText}>
-            Try another search term or change the selected filters.
-          </Text>
-        </View>
-      ) : null}
-
-      {!errorMessage
-        ? filteredUsers.map((user) => {
-            const activityText = getUserActivityText(user);
-            const isAdmin = user.role === 'admin';
-            const isUpdating = updatingUserId === user.userId;
-            const isActive = user.status === 'active';
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.filterRow}
+          style={styles.roleFilterScroll}
+          keyboardShouldPersistTaps="handled"
+        >
+          {roleFilters.map((filter) => {
+            const selected = roleFilter === filter.value;
 
             return (
-              <View key={user.userId} style={styles.userCard}>
-                <View style={styles.userHeader}>
-                  <View style={styles.userIdentity}>
-                    <View style={styles.avatar}>
-                      <Text style={styles.avatarText}>
-                        {user.name.charAt(0).toUpperCase()}
+              <Pressable
+                key={filter.value}
+                accessibilityRole="button"
+                accessibilityState={{ selected }}
+                onPress={() => setRoleFilter(filter.value)}
+                style={({ pressed }) => [
+                  styles.filterChip,
+                  selected && styles.filterChipSelected,
+                  pressed && styles.buttonPressed,
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.filterChipText,
+                    selected && styles.filterChipTextSelected,
+                  ]}
+                >
+                  {filter.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.statusFilterRow}
+          style={styles.statusFilterScroll}
+        >
+          {statusFilters.map((filter) => {
+            const selected = statusFilter === filter.value;
+
+            return (
+              <Pressable
+                key={filter.value}
+                accessibilityRole="button"
+                accessibilityState={{ selected }}
+                onPress={() => setStatusFilter(filter.value)}
+                style={({ pressed }) => [
+                  styles.statusFilter,
+                  selected && styles.statusFilterSelected,
+                  pressed && styles.buttonPressed,
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.statusFilterText,
+                    selected && styles.statusFilterTextSelected,
+                  ]}
+                >
+                  {filter.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+
+        {errorMessage ? (
+          <View style={styles.errorCard}>
+            <Text style={styles.errorTitle}>Could not load users</Text>
+
+            <Text style={styles.errorMessage}>{errorMessage}</Text>
+
+            <Pressable
+              accessibilityRole="button"
+              style={({ pressed }) => [
+                styles.retryButton,
+                pressed && styles.buttonPressed,
+              ]}
+              onPress={() => {
+                void loadUsers(true);
+              }}
+            >
+              <Text style={styles.retryButtonText}>Try again</Text>
+            </Pressable>
+          </View>
+        ) : null}
+
+        {!errorMessage && filteredUsers.length === 0 ? (
+          <View style={styles.emptyCard}>
+            <Text style={styles.emptyTitle}>No users found</Text>
+
+            <Text style={styles.emptyText}>
+              Try another search term or change the selected filters.
+            </Text>
+          </View>
+        ) : null}
+
+        {!errorMessage
+          ? filteredUsers.map((user) => {
+              const activityText = getUserActivityText(user);
+              const isAdmin = user.role === 'admin';
+              const isStaff = isStaffUser(user);
+              const isPendingRecipient =
+                user.role === 'recipient' && user.status === 'pending';
+
+              const isUpdating = updatingUserId === user.userId;
+
+              return (
+                <View key={user.userId} style={styles.userCard}>
+                  <View style={styles.userHeader}>
+                    <View style={styles.userIdentity}>
+                      <View style={styles.avatar}>
+                        <Text style={styles.avatarText}>
+                          {user.name.charAt(0).toUpperCase()}
+                        </Text>
+                      </View>
+
+                      <View style={styles.userNameBlock}>
+                        <Text style={styles.userName}>{user.name}</Text>
+
+                        {user.organisationName ? (
+                          <Text style={styles.organisationName} numberOfLines={1}>
+                            {user.organisationName}
+                          </Text>
+                        ) : null}
+                      </View>
+                    </View>
+
+                    <View
+                      style={[
+                        styles.statusBadge,
+                        user.status === 'active' && styles.activeStatusBadge,
+                        user.status === 'inactive' && styles.inactiveStatusBadge,
+                        user.status === 'pending' && styles.pendingStatusBadge,
+                        user.status === 'rejected' && styles.rejectedStatusBadge,
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.statusBadgeText,
+                          user.status === 'active' && styles.activeStatusText,
+                          user.status === 'inactive' && styles.inactiveStatusText,
+                          user.status === 'pending' && styles.pendingStatusText,
+                          user.status === 'rejected' && styles.rejectedStatusText,
+                        ]}
+                      >
+                        {formatStatus(user.status)}
                       </Text>
                     </View>
+                  </View>
 
-                    <View style={styles.userNameBlock}>
-                      <Text style={styles.userName}>{user.name}</Text>
-
-                      {user.organisationName ? (
-                        <Text style={styles.organisationName} numberOfLines={1}>
-                          {user.organisationName}
-                        </Text>
-                      ) : null}
+                  <View style={styles.roleRow}>
+                    <View style={styles.roleBadge}>
+                      <Text style={styles.roleBadgeText}>{formatRole(user.role)}</Text>
                     </View>
+
+                    {activityText ? (
+                      <Text style={styles.activityText}>{activityText}</Text>
+                    ) : null}
                   </View>
 
-                  <View
-                    style={[
-                      styles.statusBadge,
-                      isActive ? styles.activeStatusBadge : styles.inactiveStatusBadge,
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.statusBadgeText,
-                        isActive ? styles.activeStatusText : styles.inactiveStatusText,
-                      ]}
-                    >
-                      {isActive ? 'Active' : 'Inactive'}
-                    </Text>
-                  </View>
-                </View>
-
-                <View style={styles.roleRow}>
-                  <View style={styles.roleBadge}>
-                    <Text style={styles.roleBadgeText}>{formatRole(user.role)}</Text>
+                  <View style={styles.contactSection}>
+                    <Text style={styles.contactText}>{user.email}</Text>
+                    <Text style={styles.contactText}>{user.phone}</Text>
+                    <Text style={styles.addressText}>{user.address}</Text>
                   </View>
 
-                  {activityText ? (
-                    <Text style={styles.activityText}>{activityText}</Text>
+                  {isPendingRecipient ? (
+                    <View style={styles.pendingNotice}>
+                      <Text style={styles.pendingNoticeText}>
+                        This recipient is waiting for administrator approval.
+                      </Text>
+                    </View>
                   ) : null}
-                </View>
 
-                <View style={styles.contactSection}>
-                  <Text style={styles.contactText}>{user.email}</Text>
-                  <Text style={styles.contactText}>{user.phone}</Text>
-                </View>
+                  <View style={styles.cardFooter}>
+                    <Text style={styles.userIdText}>User #{user.userId}</Text>
 
-                <View style={styles.cardFooter}>
-                  <Text style={styles.userIdText}>User #{user.userId}</Text>
+                    {isAdmin ? (
+                      <Text style={styles.protectedText}>Protected account</Text>
+                    ) : null}
 
-                  {isAdmin ? (
-                    <Text style={styles.protectedText}>Protected account</Text>
-                  ) : (
-                    <Pressable
-                      accessibilityRole="button"
-                      disabled={isUpdating}
-                      onPress={() => confirmStatusChange(user)}
-                      style={({ pressed }) => [
-                        styles.actionButton,
-                        isActive ? styles.deactivateButton : styles.activateButton,
-                        (pressed || isUpdating) && styles.buttonPressed,
-                      ]}
-                    >
-                      {isUpdating ? (
-                        <ActivityIndicator
-                          size="small"
-                          color={isActive ? colours.critical : colours.accent}
-                        />
-                      ) : (
-                        <Text
-                          style={[
-                            styles.actionButtonText,
-                            isActive
-                              ? styles.deactivateButtonText
-                              : styles.activateButtonText,
+                    {isPendingRecipient ? (
+                      <View style={styles.actionGroup}>
+                        <Pressable
+                          accessibilityRole="button"
+                          disabled={isUpdating}
+                          onPress={() => rejectRecipient(user)}
+                          style={({ pressed }) => [
+                            styles.smallActionButton,
+                            styles.rejectButton,
+                            (pressed || isUpdating) && styles.buttonPressed,
                           ]}
                         >
-                          {isActive ? 'Deactivate' : 'Activate'}
-                        </Text>
-                      )}
-                    </Pressable>
-                  )}
+                          <Text style={styles.rejectButtonText}>Reject</Text>
+                        </Pressable>
+
+                        <Pressable
+                          accessibilityRole="button"
+                          disabled={isUpdating}
+                          onPress={() => approveRecipient(user)}
+                          style={({ pressed }) => [
+                            styles.smallActionButton,
+                            styles.approveButton,
+                            (pressed || isUpdating) && styles.buttonPressed,
+                          ]}
+                        >
+                          {isUpdating ? (
+                            <ActivityIndicator size="small" color={colours.textInverse} />
+                          ) : (
+                            <Text style={styles.approveButtonText}>Approve</Text>
+                          )}
+                        </Pressable>
+                      </View>
+                    ) : null}
+
+                    {!isAdmin && !isPendingRecipient && user.status !== 'rejected' ? (
+                      <View style={styles.actionGroup}>
+                        {isStaff ? (
+                          <Pressable
+                            accessibilityRole="button"
+                            disabled={isUpdating}
+                            onPress={() => openEditStaff(user)}
+                            style={({ pressed }) => [
+                              styles.smallActionButton,
+                              styles.editButton,
+                              (pressed || isUpdating) && styles.buttonPressed,
+                            ]}
+                          >
+                            <Text style={styles.editButtonText}>Edit</Text>
+                          </Pressable>
+                        ) : null}
+
+                        <Pressable
+                          accessibilityRole="button"
+                          disabled={isUpdating}
+                          onPress={() => confirmStatusChange(user)}
+                          style={({ pressed }) => [
+                            styles.smallActionButton,
+                            user.status === 'active'
+                              ? styles.deactivateButton
+                              : styles.activateButton,
+                            (pressed || isUpdating) && styles.buttonPressed,
+                          ]}
+                        >
+                          {isUpdating ? (
+                            <ActivityIndicator
+                              size="small"
+                              color={
+                                user.status === 'active'
+                                  ? colours.critical
+                                  : colours.accent
+                              }
+                            />
+                          ) : (
+                            <Text
+                              style={[
+                                styles.actionButtonText,
+                                user.status === 'active'
+                                  ? styles.deactivateButtonText
+                                  : styles.activateButtonText,
+                              ]}
+                            >
+                              {user.status === 'active' ? 'Deactivate' : 'Activate'}
+                            </Text>
+                          )}
+                        </Pressable>
+                      </View>
+                    ) : null}
+
+                    {user.status === 'rejected' ? (
+                      <Text style={styles.rejectedAccountText}>
+                        Registration rejected
+                      </Text>
+                    ) : null}
+                  </View>
                 </View>
-              </View>
-            );
-          })
-        : null}
+              );
+            })
+          : null}
 
-      {!errorMessage ? (
-        <View style={styles.infoCard}>
-          <View style={styles.infoIcon}>
-            <Text style={styles.infoIconText}>i</Text>
+        {!errorMessage ? (
+          <View style={styles.infoCard}>
+            <View style={styles.infoIcon}>
+              <Text style={styles.infoIconText}>i</Text>
+            </View>
+
+            <Text style={styles.infoText}>
+              Donors manage their own registration. Recipients require administrator
+              approval. Coordinator and driver accounts are created and maintained by
+              administrators. Deactivated accounts are retained to preserve platform
+              history.
+            </Text>
           </View>
+        ) : null}
+      </ScrollView>
 
-          <Text style={styles.infoText}>
-            Deactivated accounts remain in the platform so their donation, request and
-            delivery history is preserved.
-          </Text>
+      <Modal
+        visible={staffModalVisible}
+        animationType="slide"
+        transparent
+        onRequestClose={closeStaffModal}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <ScrollView
+              keyboardShouldPersistTaps="handled"
+              contentContainerStyle={styles.modalContent}
+            >
+              <View style={styles.modalHeader}>
+                <View style={styles.modalTitleBlock}>
+                  <Text style={styles.modalTitle}>
+                    {editingStaff ? 'Edit staff account' : 'Create staff account'}
+                  </Text>
+
+                  <Text style={styles.modalSubtitle}>
+                    {editingStaff
+                      ? `Update ${formatRole(editingStaff.role)} details`
+                      : 'Create a coordinator or delivery person account'}
+                  </Text>
+                </View>
+
+                <Pressable
+                  accessibilityRole="button"
+                  disabled={isSavingStaff}
+                  onPress={closeStaffModal}
+                  style={({ pressed }) => [
+                    styles.closeButton,
+                    pressed && styles.buttonPressed,
+                  ]}
+                >
+                  <Text style={styles.closeButtonText}>×</Text>
+                </Pressable>
+              </View>
+
+              {!editingStaff ? (
+                <>
+                  <Text style={styles.formLabel}>Role</Text>
+
+                  <View style={styles.staffRoleRow}>
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityState={{
+                        selected: staffForm.role === 'coordinator',
+                      }}
+                      onPress={() =>
+                        setStaffForm((current) => ({
+                          ...current,
+                          role: 'coordinator',
+                        }))
+                      }
+                      style={({ pressed }) => [
+                        styles.staffRoleOption,
+                        staffForm.role === 'coordinator' &&
+                          styles.staffRoleOptionSelected,
+                        pressed && styles.buttonPressed,
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.staffRoleOptionText,
+                          staffForm.role === 'coordinator' &&
+                            styles.staffRoleOptionTextSelected,
+                        ]}
+                      >
+                        Coordinator
+                      </Text>
+                    </Pressable>
+
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityState={{
+                        selected: staffForm.role === 'driver',
+                      }}
+                      onPress={() =>
+                        setStaffForm((current) => ({
+                          ...current,
+                          role: 'driver',
+                        }))
+                      }
+                      style={({ pressed }) => [
+                        styles.staffRoleOption,
+                        staffForm.role === 'driver' && styles.staffRoleOptionSelected,
+                        pressed && styles.buttonPressed,
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.staffRoleOptionText,
+                          staffForm.role === 'driver' &&
+                            styles.staffRoleOptionTextSelected,
+                        ]}
+                      >
+                        Delivery Person
+                      </Text>
+                    </Pressable>
+                  </View>
+                </>
+              ) : null}
+
+              <Text style={styles.formLabel}>Full name</Text>
+              <TextInput
+                value={staffForm.name}
+                onChangeText={(value) =>
+                  setStaffForm((current) => ({
+                    ...current,
+                    name: value,
+                  }))
+                }
+                placeholder="Full name"
+                placeholderTextColor={colours.textSecondary}
+                style={styles.formInput}
+              />
+
+              <Text style={styles.formLabel}>Email</Text>
+              <TextInput
+                value={staffForm.email}
+                onChangeText={(value) =>
+                  setStaffForm((current) => ({
+                    ...current,
+                    email: value,
+                  }))
+                }
+                placeholder="staff@example.lk"
+                placeholderTextColor={colours.textSecondary}
+                style={styles.formInput}
+                autoCapitalize="none"
+                autoCorrect={false}
+                keyboardType="email-address"
+              />
+
+              <Text style={styles.formLabel}>Phone</Text>
+              <TextInput
+                value={staffForm.phone}
+                onChangeText={(value) =>
+                  setStaffForm((current) => ({
+                    ...current,
+                    phone: value,
+                  }))
+                }
+                placeholder="0771234567"
+                placeholderTextColor={colours.textSecondary}
+                style={styles.formInput}
+                keyboardType="phone-pad"
+              />
+
+              <Text style={styles.formLabel}>Address</Text>
+              <TextInput
+                value={staffForm.address}
+                onChangeText={(value) =>
+                  setStaffForm((current) => ({
+                    ...current,
+                    address: value,
+                  }))
+                }
+                placeholder="Full address"
+                placeholderTextColor={colours.textSecondary}
+                style={[styles.formInput, styles.addressInput]}
+                multiline
+              />
+
+              {!editingStaff ? (
+                <>
+                  <Text style={styles.formLabel}>Temporary password</Text>
+                  <TextInput
+                    value={staffForm.password}
+                    onChangeText={(value) =>
+                      setStaffForm((current) => ({
+                        ...current,
+                        password: value,
+                      }))
+                    }
+                    placeholder="At least 8 characters"
+                    placeholderTextColor={colours.textSecondary}
+                    style={styles.formInput}
+                    secureTextEntry
+                    autoCapitalize="none"
+                  />
+
+                  <Text style={styles.passwordHint}>
+                    Give this password to the staff member so they can sign in.
+                  </Text>
+                </>
+              ) : null}
+
+              {staffFormError ? (
+                <View style={styles.formErrorCard}>
+                  <Text style={styles.formErrorText}>{staffFormError}</Text>
+                </View>
+              ) : null}
+
+              <View style={styles.modalActions}>
+                <Pressable
+                  accessibilityRole="button"
+                  disabled={isSavingStaff}
+                  onPress={closeStaffModal}
+                  style={({ pressed }) => [
+                    styles.cancelButton,
+                    pressed && styles.buttonPressed,
+                  ]}
+                >
+                  <Text style={styles.cancelButtonText}>Cancel</Text>
+                </Pressable>
+
+                <Pressable
+                  accessibilityRole="button"
+                  disabled={isSavingStaff}
+                  onPress={() => {
+                    void saveStaff();
+                  }}
+                  style={({ pressed }) => [
+                    styles.saveButton,
+                    (pressed || isSavingStaff) && styles.buttonPressed,
+                  ]}
+                >
+                  {isSavingStaff ? (
+                    <ActivityIndicator size="small" color={colours.textInverse} />
+                  ) : (
+                    <Text style={styles.saveButtonText}>
+                      {editingStaff ? 'Save changes' : 'Create account'}
+                    </Text>
+                  )}
+                </Pressable>
+              </View>
+            </ScrollView>
+          </View>
         </View>
-      ) : null}
-    </ScrollView>
+      </Modal>
+    </>
   );
 }
 
@@ -490,11 +1028,43 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 
-  title: {
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
     marginBottom: spacing.lg,
+  },
+
+  titleBlock: {
+    flex: 1,
+    paddingRight: spacing.sm,
+  },
+
+  title: {
     fontSize: fontSize.heading,
     fontWeight: fontWeight.bold,
     color: colours.textPrimary,
+  },
+
+  subtitle: {
+    marginTop: spacing.xs,
+    fontSize: fontSize.secondary,
+    lineHeight: 19,
+    color: colours.textSecondary,
+  },
+
+  addStaffButton: {
+    minHeight: 40,
+    paddingHorizontal: spacing.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: layout.radius,
+    backgroundColor: colours.accent,
+  },
+
+  addStaffButtonText: {
+    fontSize: fontSize.secondary,
+    fontWeight: fontWeight.semibold,
+    color: colours.textInverse,
   },
 
   searchInput: {
@@ -544,24 +1114,29 @@ const styles = StyleSheet.create({
     color: colours.textInverse,
   },
 
-  statusRow: {
-    flexDirection: 'row',
+  statusFilterScroll: {
     marginBottom: spacing.lg,
-    padding: 3,
-    borderRadius: layout.radius,
-    backgroundColor: colours.surface,
+  },
+
+  statusFilterRow: {
+    paddingRight: spacing.md,
   },
 
   statusFilter: {
-    flex: 1,
     minHeight: 38,
+    marginRight: spacing.xs,
+    paddingHorizontal: spacing.md,
     alignItems: 'center',
     justifyContent: 'center',
+    borderWidth: layout.borderWidth,
+    borderColor: colours.border,
     borderRadius: layout.radius,
+    backgroundColor: colours.background,
   },
 
   statusFilterSelected: {
-    backgroundColor: colours.background,
+    borderColor: colours.accent,
+    backgroundColor: colours.surface,
   },
 
   statusFilterText: {
@@ -642,6 +1217,14 @@ const styles = StyleSheet.create({
     backgroundColor: '#FEE2E2',
   },
 
+  pendingStatusBadge: {
+    backgroundColor: '#FEF3C7',
+  },
+
+  rejectedStatusBadge: {
+    backgroundColor: '#FEE2E2',
+  },
+
   statusBadgeText: {
     fontSize: fontSize.label,
     fontWeight: fontWeight.semibold,
@@ -652,6 +1235,14 @@ const styles = StyleSheet.create({
   },
 
   inactiveStatusText: {
+    color: colours.critical,
+  },
+
+  pendingStatusText: {
+    color: '#92400E',
+  },
+
+  rejectedStatusText: {
     color: colours.critical,
   },
 
@@ -690,10 +1281,32 @@ const styles = StyleSheet.create({
     color: colours.textSecondary,
   },
 
+  addressText: {
+    marginTop: spacing.xs,
+    fontSize: fontSize.label,
+    lineHeight: 17,
+    color: colours.textSecondary,
+  },
+
+  pendingNotice: {
+    marginTop: spacing.md,
+    padding: spacing.sm,
+    borderRadius: layout.radius,
+    backgroundColor: '#FFFBEB',
+  },
+
+  pendingNoticeText: {
+    fontSize: fontSize.secondary,
+    lineHeight: 19,
+    color: '#92400E',
+  },
+
   cardFooter: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     alignItems: 'center',
     justifyContent: 'space-between',
+    gap: spacing.sm,
     marginTop: spacing.md,
     paddingTop: spacing.sm,
     borderTopWidth: layout.borderWidth,
@@ -711,14 +1324,53 @@ const styles = StyleSheet.create({
     color: colours.textSecondary,
   },
 
-  actionButton: {
-    minWidth: 92,
+  actionGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+
+  smallActionButton: {
     minHeight: 36,
+    minWidth: 72,
     paddingHorizontal: spacing.sm,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: layout.borderWidth,
     borderRadius: layout.radius,
+  },
+
+  editButton: {
+    borderColor: colours.border,
+    backgroundColor: colours.surface,
+  },
+
+  editButtonText: {
+    fontSize: fontSize.secondary,
+    fontWeight: fontWeight.semibold,
+    color: colours.textPrimary,
+  },
+
+  approveButton: {
+    borderColor: colours.accent,
+    backgroundColor: colours.accent,
+  },
+
+  approveButtonText: {
+    fontSize: fontSize.secondary,
+    fontWeight: fontWeight.semibold,
+    color: colours.textInverse,
+  },
+
+  rejectButton: {
+    borderColor: colours.critical,
+    backgroundColor: colours.background,
+  },
+
+  rejectButtonText: {
+    fontSize: fontSize.secondary,
+    fontWeight: fontWeight.semibold,
+    color: colours.critical,
   },
 
   deactivateButton: {
@@ -742,6 +1394,12 @@ const styles = StyleSheet.create({
 
   activateButtonText: {
     color: colours.accent,
+  },
+
+  rejectedAccountText: {
+    fontSize: fontSize.label,
+    fontWeight: fontWeight.medium,
+    color: colours.critical,
   },
 
   emptyCard: {
@@ -837,6 +1495,182 @@ const styles = StyleSheet.create({
   },
 
   retryButtonText: {
+    fontSize: fontSize.secondary,
+    fontWeight: fontWeight.semibold,
+    color: colours.textInverse,
+  },
+
+  modalBackdrop: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(0, 0, 0, 0.35)',
+  },
+
+  modalCard: {
+    maxHeight: '90%',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    backgroundColor: colours.background,
+  },
+
+  modalContent: {
+    padding: layout.screenPadding,
+    paddingBottom: spacing.xxl,
+  },
+
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: spacing.lg,
+  },
+
+  modalTitleBlock: {
+    flex: 1,
+    paddingRight: spacing.md,
+  },
+
+  modalTitle: {
+    fontSize: fontSize.heading,
+    fontWeight: fontWeight.bold,
+    color: colours.textPrimary,
+  },
+
+  modalSubtitle: {
+    marginTop: spacing.xs,
+    fontSize: fontSize.secondary,
+    lineHeight: 19,
+    color: colours.textSecondary,
+  },
+
+  closeButton: {
+    width: 38,
+    height: 38,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 19,
+    backgroundColor: colours.surface,
+  },
+
+  closeButtonText: {
+    fontSize: 26,
+    lineHeight: 28,
+    color: colours.textSecondary,
+  },
+
+  formLabel: {
+    marginBottom: spacing.xs,
+    fontSize: fontSize.secondary,
+    fontWeight: fontWeight.semibold,
+    color: colours.textPrimary,
+  },
+
+  formInput: {
+    minHeight: layout.controlHeight,
+    marginBottom: spacing.md,
+    paddingHorizontal: spacing.md,
+    borderWidth: layout.borderWidth,
+    borderColor: colours.border,
+    borderRadius: layout.radius,
+    backgroundColor: colours.background,
+    fontSize: fontSize.body,
+    color: colours.textPrimary,
+  },
+
+  addressInput: {
+    minHeight: 80,
+    paddingTop: spacing.sm,
+    textAlignVertical: 'top',
+  },
+
+  staffRoleRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginBottom: spacing.md,
+  },
+
+  staffRoleOption: {
+    flex: 1,
+    minHeight: layout.controlHeight,
+    paddingHorizontal: spacing.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: layout.borderWidth,
+    borderColor: colours.border,
+    borderRadius: layout.radius,
+    backgroundColor: colours.background,
+  },
+
+  staffRoleOptionSelected: {
+    borderColor: colours.accent,
+    backgroundColor: colours.surface,
+  },
+
+  staffRoleOptionText: {
+    fontSize: fontSize.secondary,
+    fontWeight: fontWeight.medium,
+    color: colours.textSecondary,
+    textAlign: 'center',
+  },
+
+  staffRoleOptionTextSelected: {
+    color: colours.accent,
+    fontWeight: fontWeight.semibold,
+  },
+
+  passwordHint: {
+    marginTop: -spacing.sm,
+    marginBottom: spacing.md,
+    fontSize: fontSize.label,
+    lineHeight: 17,
+    color: colours.textSecondary,
+  },
+
+  formErrorCard: {
+    marginBottom: spacing.md,
+    padding: spacing.sm,
+    borderRadius: layout.radius,
+    backgroundColor: '#FEF2F2',
+  },
+
+  formErrorText: {
+    fontSize: fontSize.secondary,
+    lineHeight: 19,
+    color: colours.critical,
+  },
+
+  modalActions: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginTop: spacing.sm,
+  },
+
+  cancelButton: {
+    flex: 1,
+    minHeight: layout.controlHeight,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: layout.borderWidth,
+    borderColor: colours.border,
+    borderRadius: layout.radius,
+    backgroundColor: colours.background,
+  },
+
+  cancelButtonText: {
+    fontSize: fontSize.secondary,
+    fontWeight: fontWeight.semibold,
+    color: colours.textPrimary,
+  },
+
+  saveButton: {
+    flex: 1,
+    minHeight: layout.controlHeight,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: layout.radius,
+    backgroundColor: colours.accent,
+  },
+
+  saveButtonText: {
     fontSize: fontSize.secondary,
     fontWeight: fontWeight.semibold,
     color: colours.textInverse,
