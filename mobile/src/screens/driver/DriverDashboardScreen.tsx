@@ -13,21 +13,29 @@ import { useFocusEffect } from '@react-navigation/native';
 
 import { EmptyState } from '../../components';
 import { getErrorMessage } from '../../api/client';
-import { fetchAssignments, setAvailabilityRequest } from '../../api/driver.api';
+import {
+  acceptAssignmentRequest,
+  declineAssignmentRequest,
+  fetchAssignments,
+  setAvailabilityRequest,
+} from '../../api/driver.api';
 import { useAuth } from '../../context/AuthContext';
 import { colours, fontSize, fontWeight, layout, spacing } from '../../constants/theme';
 import { ActiveDeliveryCard } from './components/ActiveDeliveryCard';
 import { AvailabilityToggle } from './components/AvailabilityToggle';
+import { DeclineReasonModal } from './components/DeclineReasonModal';
 import { NewAssignmentCard } from './components/NewAssignmentCard';
 import { StatCard, StatRow } from './components/StatCard';
 import type { DriverAssignment, DriverStats } from '../../types';
 
 /**
- * Driver dashboard. Figma frame "04 Driver Dashboard", US-DR01.
+ * Driver dashboard. Figma frame "04 Driver Dashboard", US-DR01 and US-DR02.
  *
  * Sprint 1 shows real data from GET /driver/stats and GET /driver/assignments
- * and writes availability through PATCH /driver/availability. Accept, Decline
- * and the pickup/drop off confirmation are drawn but inert; they are US-DR02.
+ * and writes availability through PATCH /driver/availability. Sprint 2 wires
+ * Accept and Decline to PUT /driver/assignments/:id/accept|decline. The
+ * pickup/drop-off confirmation buttons are still drawn but inert; that is a
+ * later story.
  */
 export function DriverDashboardScreen() {
   const { user, updateUser } = useAuth();
@@ -38,6 +46,10 @@ export function DriverDashboardScreen() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isSavingAvailability, setIsSavingAvailability] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isAccepting, setIsAccepting] = useState(false);
+  const [isDeclineModalVisible, setIsDeclineModalVisible] = useState(false);
+  const [isDeclining, setIsDeclining] = useState(false);
+  const [declineError, setDeclineError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -91,9 +103,66 @@ export function DriverDashboardScreen() {
     (item) => item.status === 'accepted' || item.status === 'in_transit',
   );
 
-  // TODO(US-DR02): wire to acceptAssignmentRequest / the decline reason sheet.
-  const notYet = useCallback(() => {
-    Alert.alert('Coming in Sprint 2', 'Responding to an assignment is not built yet.');
+  /** Swaps one assignment in place so the list re-renders without a refetch. */
+  const replaceAssignment = useCallback((updated: DriverAssignment) => {
+    setAssignments((current) =>
+      current.map((item) =>
+        item.assignmentId === updated.assignmentId ? updated : item,
+      ),
+    );
+  }, []);
+
+  const onAccept = useCallback(async () => {
+    if (!newAssignment) {
+      return;
+    }
+    setIsAccepting(true);
+    try {
+      const updated = await acceptAssignmentRequest(newAssignment.assignmentId);
+      replaceAssignment(updated);
+    } catch (caught) {
+      Alert.alert('Could not accept assignment', getErrorMessage(caught));
+    } finally {
+      setIsAccepting(false);
+    }
+  }, [newAssignment, replaceAssignment]);
+
+  const onDeclinePress = useCallback(() => {
+    setDeclineError(null);
+    setIsDeclineModalVisible(true);
+  }, []);
+
+  const onDeclineCancel = useCallback(() => {
+    setIsDeclineModalVisible(false);
+    setDeclineError(null);
+  }, []);
+
+  const onDeclineSubmit = useCallback(
+    async (declineReason: string) => {
+      if (!newAssignment) {
+        return;
+      }
+      setIsDeclining(true);
+      setDeclineError(null);
+      try {
+        const updated = await declineAssignmentRequest(
+          newAssignment.assignmentId,
+          declineReason,
+        );
+        replaceAssignment(updated);
+        setIsDeclineModalVisible(false);
+      } catch (caught) {
+        setDeclineError(getErrorMessage(caught));
+      } finally {
+        setIsDeclining(false);
+      }
+    },
+    [newAssignment, replaceAssignment],
+  );
+
+  // TODO(US-DR03): wire to the pickup/drop-off confirmation flow.
+  const onConfirmDelivery = useCallback(() => {
+    Alert.alert('Coming soon', 'Pickup and drop-off confirmation is not built yet.');
   }, []);
 
   if (isLoading) {
@@ -144,8 +213,10 @@ export function DriverDashboardScreen() {
         {newAssignment ? (
           <NewAssignmentCard
             assignment={newAssignment}
-            onAccept={notYet}
-            onDecline={notYet}
+            onAccept={onAccept}
+            onDecline={onDeclinePress}
+            isAccepting={isAccepting}
+            isDeclining={isDeclining}
           />
         ) : (
           <View style={styles.placeholder}>
@@ -159,7 +230,7 @@ export function DriverDashboardScreen() {
 
         <Text style={styles.sectionHeading}>Active delivery</Text>
         {activeDelivery ? (
-          <ActiveDeliveryCard assignment={activeDelivery} onConfirm={notYet} />
+          <ActiveDeliveryCard assignment={activeDelivery} onConfirm={onConfirmDelivery} />
         ) : (
           <EmptyState
             title="No active delivery"
@@ -167,6 +238,14 @@ export function DriverDashboardScreen() {
           />
         )}
       </ScrollView>
+
+      <DeclineReasonModal
+        visible={isDeclineModalVisible}
+        isSubmitting={isDeclining}
+        errorMessage={declineError}
+        onCancel={onDeclineCancel}
+        onSubmit={onDeclineSubmit}
+      />
     </SafeAreaView>
   );
 }

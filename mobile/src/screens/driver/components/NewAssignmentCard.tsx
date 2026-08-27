@@ -10,6 +10,8 @@ interface NewAssignmentCardProps {
   assignment: DriverAssignment;
   onAccept: () => void;
   onDecline: () => void;
+  isAccepting?: boolean;
+  isDeclining?: boolean;
 }
 
 /** "Chicken Fried Rice · 30 servings · Chilled" */
@@ -31,8 +33,11 @@ export function NewAssignmentCard({
   assignment,
   onAccept,
   onDecline,
+  isAccepting = false,
+  isDeclining = false,
 }: NewAssignmentCardProps) {
   const { listing, recipient } = assignment.request;
+  const isResponding = isAccepting || isDeclining;
 
   return (
     <View style={styles.card}>
@@ -77,9 +82,17 @@ export function NewAssignmentCard({
           label="Decline"
           variant="secondary"
           onPress={onDecline}
+          loading={isDeclining}
+          disabled={isResponding}
           style={styles.decline}
         />
-        <Button label="Accept" onPress={onAccept} style={styles.accept} />
+        <Button
+          label="Accept"
+          onPress={onAccept}
+          loading={isAccepting}
+          disabled={isResponding}
+          style={styles.accept}
+        />
       </View>
     </View>
   );
