@@ -257,7 +257,7 @@ Browse results are ordered urgent first, then by soonest expiry. The composite i
 
 1. **Urgency thresholds.** The table in section 5 is agreed: prepared always urgent, packaged urgent within 48 hours, anything within 6 hours critical.
 2. **`is_urgent` is a stored column**, not computed at read time, so browse can order by it in SQL.
-3. **`quantity_remaining` decrements on donor acceptance**, never on request creation. A pending request must not reserve stock, otherwise one recipient sitting on an unanswered request blocks everyone else. Implemented as `quantityAfterAcceptance()` in `urgency.service.ts`, and backed by the quantity range CHECK constraint in section 10.
+3. **`quantity_remaining` decrements on coordinator acceptance**, never on request creation. A pending request must not reserve stock, otherwise one recipient sitting on an unanswered request blocks everyone else. Implemented as `quantityAfterAcceptance()` in `urgency.service.ts`, and backed by the quantity range CHECK constraint in section 10. Approval moved from the donor to the Donation Coordinator in Sprint 2: the coordinator already owns matching and assignment, so having the donor approve as well duplicated a responsibility. The donor's only remaining action after posting is confirming handover.
 4. **Driver availability** is modelled as `User.is_available`, defaulting to `true`. The coordinator filters on it when choosing a driver. A fuller `DriverProfile` with vehicle type and capacity was rejected as more than this project needs.
 5. **Database is PostgreSQL**, not MySQL. See charter section 7 and section 10 below.
 

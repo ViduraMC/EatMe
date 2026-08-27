@@ -9,12 +9,21 @@ import { colours, fontSize, fontWeight } from '../constants/theme';
 
 import { LoginScreen } from '../screens/auth/LoginScreen';
 import { RegisterScreen } from '../screens/auth/RegisterScreen';
-import { DonorHomeScreen } from '../screens/donor/DonorHomeScreen';
+import { MyListingsScreen } from '../screens/donor/MyListingsScreen';
+import { CreateListingScreen } from '../screens/donor/CreateListingScreen';
+import { AddItemsScreen } from '../screens/donor/AddItemsScreen';
+import { ListingDetailScreen } from '../screens/donor/ListingDetailScreen';
+import { IncomingRequestsScreen } from '../screens/donor/IncomingRequestsScreen';
+import { ConfirmPickupScreen } from '../screens/donor/ConfirmPickupScreen';
 import { RecipientHomeScreen } from '../screens/recipient/RecipientHomeScreen';
 import { CoordinatorHomeScreen } from '../screens/coordinator/CoordinatorHomeScreen';
 import { DriverDashboardScreen } from '../screens/driver/DriverDashboardScreen';
 import { DeliveryHistoryScreen } from '../screens/driver/DeliveryHistoryScreen';
 import { DriverProfileScreen } from '../screens/driver/DriverProfileScreen';
+import { DriversListScreen } from '../screens/coordinator/DriversListScreen';
+import { CreateAssignmentScreen } from '../screens/coordinator/CreateAssignmentScreen';
+import { AssignmentsListScreen } from '../screens/coordinator/AssignmentsListScreen';
+import { DriverHomeScreen } from '../screens/driver/DriverHomeScreen';
 import { AdminHomeScreen } from '../screens/admin/AdminHomeScreen';
 
 import type {
@@ -66,14 +75,39 @@ function AuthNavigator() {
   );
 }
 
-/** Vidura adds donor screens here. */
+/** Donation and Food Listing. Owner: Vidura. */
 function DonorNavigator() {
   return (
     <DonorStack.Navigator screenOptions={screenOptions}>
       <DonorStack.Screen
-        name="DonorHome"
-        component={DonorHomeScreen}
-        options={{ title: 'My Donations' }}
+        name="MyListings"
+        component={MyListingsScreen}
+        options={{ title: 'My Listings' }}
+      />
+      <DonorStack.Screen
+        name="CreateListing"
+        component={CreateListingScreen}
+        options={{ title: 'Create Listing' }}
+      />
+      <DonorStack.Screen
+        name="AddItems"
+        component={AddItemsScreen}
+        options={{ title: 'Add Food Items' }}
+      />
+      <DonorStack.Screen
+        name="ListingDetail"
+        component={ListingDetailScreen}
+        options={{ title: 'Listing' }}
+      />
+      <DonorStack.Screen
+        name="IncomingRequests"
+        component={IncomingRequestsScreen}
+        options={{ title: 'Requests' }}
+      />
+      <DonorStack.Screen
+        name="ConfirmPickup"
+        component={ConfirmPickupScreen}
+        options={{ title: 'Confirm Pickup' }}
       />
     </DonorStack.Navigator>
   );
@@ -100,6 +134,21 @@ function CoordinatorNavigator() {
         name="CoordinatorHome"
         component={CoordinatorHomeScreen}
         options={{ title: 'Deliveries' }}
+      />
+      <CoordinatorStack.Screen
+        name="DriversList"
+        component={DriversListScreen}
+        options={{ title: 'Drivers' }}
+      />
+      <CoordinatorStack.Screen
+        name="CreateAssignment"
+        component={CreateAssignmentScreen}
+        options={{ title: 'Assign Driver' }}
+      />
+      <CoordinatorStack.Screen
+        name="AssignmentsList"
+        component={AssignmentsListScreen}
+        options={{ title: 'Assignments' }}
       />
     </CoordinatorStack.Navigator>
   );

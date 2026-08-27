@@ -183,6 +183,8 @@ async function main(): Promise<void> {
   const bakeryId = users.get('bakery@eatme.lk')!;
   const recipientId = users.get('recipient@eatme.lk')!;
   const eldersId = users.get('elders@eatme.lk')!;
+  const coordinatorId = users.get('coordinator@eatme.lk')!;
+  const driverId = users.get('driver@eatme.lk')!;
 
   console.log('Creating listings and items...');
 

@@ -10,12 +10,31 @@ export type AuthStackParamList = {
   Register: undefined;
 };
 
-/** Vidura. Donation and Listing. */
+/**
+ * Vidura. Donation and Listing.
+ *
+ * Creating a listing is a two step flow, matching the wireframes: the details
+ * are collected on CreateListing and handed to AddItems, which collects the
+ * food items and publishes both together. The details travel as plain strings
+ * so the params stay serialisable.
+ */
 export type DonorStackParamList = {
-  DonorHome: undefined;
-  // CreateListing: undefined;
-  // MyListings: undefined;
-  // ListingDetail: { listingId: number };
+  MyListings: undefined;
+  CreateListing: undefined;
+  AddItems: {
+    title: string;
+    description: string;
+    pickupAddress: string;
+    /** ISO 8601. */
+    pickupWindowStart: string;
+    /** ISO 8601. */
+    pickupWindowEnd: string;
+  };
+  ListingDetail: { listingId: number };
+  /** Read only. The Donation Coordinator approves requests, not the donor. */
+  IncomingRequests: undefined;
+  /** Omit assignmentId to see everything awaiting this donor's confirmation. */
+  ConfirmPickup: { assignmentId?: number } | undefined;
 };
 
 /** Haritha. Food Requests. */
@@ -28,7 +47,11 @@ export type RecipientStackParamList = {
 /** Kaushal. Delivery Coordination. */
 export type CoordinatorStackParamList = {
   CoordinatorHome: undefined;
-  // PendingAssignments: undefined;
+  DriversList: undefined;
+  /** US-C02: Coordinator picks a driver for a specific accepted request. */
+  CreateAssignment: { requestId: number };
+  /** US-C02: Live status tracking of all delivery assignments. */
+  AssignmentsList: undefined;
 };
 
 /** Lakkhana. Driver and Delivery. */
