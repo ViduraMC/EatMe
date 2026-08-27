@@ -37,8 +37,10 @@ enum UserRole {
 }
 
 enum UserStatus {
+  pending
   active
   inactive
+  rejected
 }
 
 enum ListingStatus {

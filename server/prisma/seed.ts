@@ -367,7 +367,7 @@ async function main(): Promise<void> {
     select: { quantityRemaining: true },
   });
 
-  await prisma.donationRequest.create({
+  const acceptedRequest = await prisma.donationRequest.create({
     data: {
       listingId: bread.listingId,
       recipientId: eldersId,
@@ -400,31 +400,11 @@ async function main(): Promise<void> {
 
   console.log('Creating a delivery assignment...');
 
-  /*
-   * One delivery assignment in "accepted" status against the accepted bread
-   * request.
-   *
-   * This exists so the donor's Confirm Pickup screen has real data to work
-   * against before the coordinator's create-assignment endpoint is merged.
-   * It is seeded through Prisma directly rather than through that endpoint,
-   * because the endpoint does not exist yet — but the row itself is a genuine
-   * DeliveryAssignment, not a stub, so the donor flow exercises the real
-   * table and the real status rule.
-   *
-   * Deliberately left with BOTH pickup timestamps null: the point of the
-   * screen is to set the donor one and watch the assignment stay in
-   * "accepted" until the driver confirms too.
-   */
-  const acceptedRequest = await prisma.donationRequest.findFirstOrThrow({
-    where: { status: 'accepted' },
-    select: { requestId: true },
-  });
-
   await prisma.deliveryAssignment.create({
     data: {
       requestId: acceptedRequest.requestId,
-      coordinatorId: coordinatorId,
-      driverId: driverId,
+      coordinatorId,
+      driverId,
       status: 'accepted',
       noteToDriver: 'Collect from the side entrance on Main Street.',
       assignedAt: hoursAgo(2),
