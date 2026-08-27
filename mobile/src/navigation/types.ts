@@ -47,7 +47,11 @@ export type RecipientStackParamList = {
 /** Kaushal. Delivery Coordination. */
 export type CoordinatorStackParamList = {
   CoordinatorHome: undefined;
-  // PendingAssignments: undefined;
+  DriversList: undefined;
+  /** US-C02: Coordinator picks a driver for a specific accepted request. */
+  CreateAssignment: { requestId: number };
+  /** US-C02: Live status tracking of all delivery assignments. */
+  AssignmentsList: undefined;
 };
 
 /** Lakkhana. Driver and Delivery. */
