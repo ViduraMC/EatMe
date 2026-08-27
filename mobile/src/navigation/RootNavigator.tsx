@@ -25,6 +25,10 @@ import { CreateAssignmentScreen } from '../screens/coordinator/CreateAssignmentS
 import { AssignmentsListScreen } from '../screens/coordinator/AssignmentsListScreen';
 import { DriverHomeScreen } from '../screens/driver/DriverHomeScreen';
 import { AdminHomeScreen } from '../screens/admin/AdminHomeScreen';
+import { AdminListingsScreen } from '../screens/admin/AdminListingsScreen';
+import { AdminRequestsScreen } from '../screens/admin/AdminRequestsScreen';
+import { AdminAssignmentsScreen } from '../screens/admin/AdminAssignmentsScreen';
+import { AdminUsersScreen } from '../screens/admin/AdminUsersScreen';
 
 import type {
   AdminStackParamList,
@@ -201,6 +205,7 @@ function DriverNavigator() {
 }
 
 /** Naily adds admin screens here. */
+/** Naily adds admin screens here. */
 function AdminNavigator() {
   return (
     <AdminStack.Navigator screenOptions={screenOptions}>
@@ -208,6 +213,30 @@ function AdminNavigator() {
         name="AdminHome"
         component={AdminHomeScreen}
         options={{ title: 'Administration' }}
+      />
+
+      <AdminStack.Screen
+        name="AdminListings"
+        component={AdminListingsScreen}
+        options={{ title: 'Donation Listings' }}
+      />
+
+      <AdminStack.Screen
+        name="AdminRequests"
+        component={AdminRequestsScreen}
+        options={{ title: 'Donation Requests' }}
+      />
+
+      <AdminStack.Screen
+        name="AdminAssignments"
+        component={AdminAssignmentsScreen}
+        options={{ title: 'Delivery Assignments' }}
+      />
+
+      <AdminStack.Screen
+        name="AdminUsers"
+        component={AdminUsersScreen}
+        options={{ title: 'Users' }}
       />
     </AdminStack.Navigator>
   );

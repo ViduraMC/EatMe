@@ -110,8 +110,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const register = useCallback(
     async (input: RegisterInput) => {
       setIsSubmitting(true);
+
       try {
         const payload = await registerRequest(input);
+
+        if (payload.user.status === 'pending') {
+          return;
+        }
+
         await applyAuth(payload);
       } finally {
         setIsSubmitting(false);
