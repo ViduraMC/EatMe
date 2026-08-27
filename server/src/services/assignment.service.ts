@@ -1,0 +1,456 @@
+import { prisma } from '../config/prisma';
+import { ApiError } from '../utils/apiError';
+import { quantityAfterAcceptance } from './urgency.service';
+import { evaluateUrgency } from './urgency.service';
+
+/**
+ * Service logic for delivery coordination and driver assignments (US-C01 & US-C02).
+ * Owner: Kaushal Bandara (handled by agent).
+ */
+
+function presentRequest(request: any) {
+  return {
+    ...request,
+    items: request.items.map((ri: any) => {
+      try {
+        const { level, effectiveExpiry } = evaluateUrgency({
+          category: ri.item.category,
+          expiryDate: ri.item.expiryDate,
+          preparedAt: ri.item.preparedAt,
+          safeWindowHours: ri.item.safeWindowHours,
+        });
+        return {
+          ...ri,
+          item: {
+            ...ri.item,
+            urgencyLevel: level,
+            effectiveExpiry,
+          },
+        };
+      } catch {
+        return {
+          ...ri,
+          item: {
+            ...ri.item,
+            urgencyLevel: 'critical',
+            effectiveExpiry: ri.item.computedExpiry ?? ri.item.expiryDate ?? null,
+          },
+        };
+      }
+    }),
+  };
+}
+
+/**
+ * Get the queue of requests that need assignment (pending or accepted requests with no active assignments).
+ */
+export async function getAssignmentQueue() {
+  const requests = await prisma.donationRequest.findMany({
+    where: {
+      status: {
+        in: ['pending', 'accepted'],
+      },
+      assignments: {
+        none: {
+          status: {
+            in: ['pending_driver', 'accepted', 'in_transit', 'completed'],
+          },
+        },
+      },
+    },
+    include: {
+      recipient: {
+        select: {
+          userId: true,
+          name: true,
+          organisationName: true,
+          phone: true,
+          address: true,
+        },
+      },
+      listing: {
+        include: {
+          donor: {
+            select: {
+              userId: true,
+              name: true,
+              organisationName: true,
+              phone: true,
+              address: true,
+            },
+          },
+        },
+      },
+      items: {
+        include: {
+          item: true,
+        },
+      },
+    },
+    orderBy: {
+      createdAt: 'desc',
+    },
+  });
+
+  return requests.map(presentRequest);
+}
+
+/**
+ * Get KPI counts for the coordinator dashboard.
+ */
+export async function getCoordinatorStats() {
+  const queueSize = await prisma.donationRequest.count({
+    where: {
+      status: {
+        in: ['pending', 'accepted'],
+      },
+      assignments: {
+        none: {
+          status: {
+            in: ['pending_driver', 'accepted', 'in_transit', 'completed'],
+          },
+        },
+      },
+    },
+  });
+
+  const pendingDriverCount = await prisma.deliveryAssignment.count({
+    where: {
+      status: 'pending_driver',
+    },
+  });
+
+  const activeDeliveryCount = await prisma.deliveryAssignment.count({
+    where: {
+      status: {
+        in: ['accepted', 'in_transit'],
+      },
+    },
+  });
+
+  const completedDeliveryCount = await prisma.deliveryAssignment.count({
+    where: {
+      status: 'completed',
+    },
+  });
+
+  return {
+    queueSize,
+    pendingDriverCount,
+    activeDeliveryCount,
+    completedDeliveryCount,
+  };
+}
+
+/**
+ * List all active drivers along with availability.
+ */
+export async function getDriversList() {
+  return prisma.user.findMany({
+    where: {
+      role: 'driver',
+      status: 'active',
+    },
+    select: {
+      userId: true,
+      name: true,
+      email: true,
+      phone: true,
+      address: true,
+      isAvailable: true,
+      status: true,
+      createdAt: true,
+    },
+    orderBy: {
+      name: 'asc',
+    },
+  });
+}
+
+export interface CreateAssignmentInput {
+  requestId: number;
+  driverId: number;
+  noteToDriver?: string | null;
+}
+
+/**
+ * US-C02: Create delivery assignment and accept request in a single atomic transaction.
+ */
+export async function createAssignment(
+  coordinatorId: number,
+  input: CreateAssignmentInput,
+) {
+  const { requestId, driverId, noteToDriver } = input;
+
+  return prisma.$transaction(async (tx) => {
+    // 1. Fetch request with items & listing
+    const request = await tx.donationRequest.findUnique({
+      where: { requestId },
+      include: {
+        items: {
+          include: {
+            item: true,
+          },
+        },
+        listing: {
+          include: {
+            items: true,
+          },
+        },
+        assignments: true,
+      },
+    });
+
+    if (!request) {
+      throw ApiError.notFound('That request does not exist');
+    }
+
+    if (request.status === 'rejected' || request.status === 'cancelled') {
+      throw ApiError.badRequest(`Cannot assign driver to a ${request.status} request`);
+    }
+
+    // Check if an active assignment already exists
+    const hasActiveAssignment = request.assignments.some((a) =>
+      ['pending_driver', 'accepted', 'in_transit', 'completed'].includes(a.status),
+    );
+    if (hasActiveAssignment) {
+      throw ApiError.badRequest(
+        'An active delivery assignment already exists for this request',
+      );
+    }
+
+    // 2. Validate driver
+    const driver = await tx.user.findUnique({
+      where: { userId: driverId },
+    });
+
+    if (!driver || driver.role !== 'driver' || driver.status !== 'active') {
+      throw ApiError.badRequest('Select a valid active driver');
+    }
+
+    // 3. If request is still pending, decrement quantityRemaining on items
+    if (request.status === 'pending') {
+      for (const reqItem of request.items) {
+        const currentRemaining = Number(reqItem.item.quantityRemaining);
+        const requestedQty = Number(reqItem.quantityRequested);
+
+        if (requestedQty > currentRemaining) {
+          throw ApiError.badRequest(
+            `Requested quantity for ${reqItem.item.foodName} (${requestedQty}) exceeds remaining stock (${currentRemaining})`,
+          );
+        }
+
+        const newRemaining = quantityAfterAcceptance(currentRemaining, requestedQty);
+
+        await tx.donationItem.update({
+          where: { itemId: reqItem.itemId },
+          data: {
+            quantityRemaining: newRemaining,
+          },
+        });
+      }
+
+      // Compute new listing status: if all items are fully reserved, close to 'partially_fulfilled' or 'fulfilled'.
+      const updatedItems = await tx.donationItem.findMany({
+        where: { listingId: request.listingId },
+        select: { quantity: true, quantityRemaining: true },
+      });
+
+      const allClaimed = updatedItems.every((i) => Number(i.quantityRemaining) === 0);
+      const anyClaimed = updatedItems.some(
+        (i) => Number(i.quantityRemaining) < Number(i.quantity),
+      );
+
+      const currentStatus = request.listing.status;
+      let newListingStatus = currentStatus;
+      if (allClaimed) {
+        newListingStatus = 'fully_claimed';
+      } else if (anyClaimed && currentStatus === 'open') {
+        newListingStatus = 'partially_claimed';
+      }
+
+      if (newListingStatus !== currentStatus) {
+        await tx.donationListing.update({
+          where: { listingId: request.listingId },
+          data: { status: newListingStatus },
+        });
+      }
+
+      // Mark request as accepted
+      await tx.donationRequest.update({
+        where: { requestId },
+        data: {
+          status: 'accepted',
+          respondedAt: new Date(),
+        },
+      });
+    }
+
+    // 4. Create the delivery assignment
+    const assignment = await tx.deliveryAssignment.create({
+      data: {
+        requestId,
+        coordinatorId,
+        driverId,
+        noteToDriver: noteToDriver ?? null,
+        status: 'pending_driver',
+      },
+      include: {
+        driver: {
+          select: {
+            userId: true,
+            name: true,
+            email: true,
+            phone: true,
+          },
+        },
+        coordinator: {
+          select: {
+            userId: true,
+            name: true,
+          },
+        },
+        request: {
+          include: {
+            recipient: {
+              select: {
+                userId: true,
+                name: true,
+                organisationName: true,
+                phone: true,
+                address: true,
+              },
+            },
+            listing: {
+              include: {
+                donor: {
+                  select: {
+                    userId: true,
+                    name: true,
+                    organisationName: true,
+                    phone: true,
+                    address: true,
+                  },
+                },
+              },
+            },
+            items: {
+              include: {
+                item: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    return assignment;
+  });
+}
+
+/**
+ * US-C02: Reject a pending request with a reason.
+ */
+export async function rejectRequest(
+  coordinatorId: number,
+  requestId: number,
+  rejectionReason?: string | null,
+) {
+  const request = await prisma.donationRequest.findUnique({
+    where: { requestId },
+  });
+
+  if (!request) {
+    throw ApiError.notFound('That request does not exist');
+  }
+
+  if (request.status !== 'pending') {
+    throw ApiError.badRequest(
+      `Cannot reject a request that is already ${request.status}`,
+    );
+  }
+
+  return prisma.donationRequest.update({
+    where: { requestId },
+    data: {
+      status: 'rejected',
+      rejectionReason: rejectionReason ?? null,
+      respondedAt: new Date(),
+    },
+    include: {
+      recipient: {
+        select: {
+          userId: true,
+          name: true,
+          organisationName: true,
+        },
+      },
+      listing: {
+        select: {
+          listingId: true,
+          title: true,
+        },
+      },
+    },
+  });
+}
+
+/**
+ * US-C02: Get all delivery assignments with status for coordinator tracking.
+ */
+export async function getAllAssignments() {
+  const assignments = await prisma.deliveryAssignment.findMany({
+    include: {
+      driver: {
+        select: {
+          userId: true,
+          name: true,
+          phone: true,
+          isAvailable: true,
+        },
+      },
+      coordinator: {
+        select: {
+          userId: true,
+          name: true,
+        },
+      },
+      request: {
+        include: {
+          recipient: {
+            select: {
+              userId: true,
+              name: true,
+              organisationName: true,
+              phone: true,
+              address: true,
+            },
+          },
+          listing: {
+            include: {
+              donor: {
+                select: {
+                  userId: true,
+                  name: true,
+                  organisationName: true,
+                  phone: true,
+                  address: true,
+                },
+              },
+            },
+          },
+          items: {
+            include: {
+              item: true,
+            },
+          },
+        },
+      },
+    },
+    orderBy: {
+      createdAt: 'desc',
+    },
+  });
+
+  return assignments;
+}

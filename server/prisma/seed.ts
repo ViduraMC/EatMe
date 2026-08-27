@@ -398,17 +398,17 @@ async function main(): Promise<void> {
     data: { status: 'partially_claimed' },
   });
 
-  console.log('Creating delivery assignments...');
+  console.log('Creating a delivery assignment...');
 
   await prisma.deliveryAssignment.create({
     data: {
       requestId: acceptedRequest.requestId,
       coordinatorId,
       driverId,
-      status: 'pending_driver',
-      noteToDriver:
-        'Collect the bread from Colombo Fort Bakers and deliver it to Mount Lavinia Elders’ Home.',
-      assignedAt: hoursAgo(0.5),
+      status: 'accepted',
+      noteToDriver: 'Collect from the side entrance on Main Street.',
+      assignedAt: hoursAgo(2),
+      respondedAt: hoursAgo(1),
     },
   });
 
