@@ -48,6 +48,7 @@ export function isThisMonth(iso: string): boolean {
   const date = toDate(iso);
   const now = new Date();
   return date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth();
+}
 /**
  * Date entry and display helpers.
  *

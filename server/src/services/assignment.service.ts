@@ -1,6 +1,8 @@
 import type { AssignmentStatus } from '@prisma/client';
 import { prisma } from '../config/prisma';
 import { ApiError } from '../utils/apiError';
+import { quantityAfterAcceptance } from './urgency.service';
+import { evaluateUrgency } from './urgency.service';
 
 /**
  * Delivery-assignment rules shared across modules.
@@ -58,10 +60,7 @@ export function assertAwaitingDriverResponse(
       `This assignment is already ${assignment.status.replace(/_/g, ' ')} and can no longer be accepted or declined`,
     );
   }
-import { prisma } from '../config/prisma';
-import { ApiError } from '../utils/apiError';
-import { quantityAfterAcceptance } from './urgency.service';
-import { evaluateUrgency } from './urgency.service';
+}
 
 /**
  * Service logic for delivery coordination and driver assignments (US-C01 & US-C02).
