@@ -55,9 +55,16 @@ export type CoordinatorStackParamList = {
 };
 
 /** Lakkhana. Driver and Delivery. */
+export type DriverTabParamList = {
+  DriverDashboard: undefined;
+  DriverHistory: undefined;
+  DriverProfile: undefined;
+};
+
 export type DriverStackParamList = {
-  DriverHome: undefined;
-  // MyDeliveries: undefined;
+  DriverTabs: undefined;
+  // DeliveryDetail: { assignmentId: number };   // US-DR02
+  // DeclineAssignment: { assignmentId: number };// US-DR02
 };
 
 /** Naily. Administration. */

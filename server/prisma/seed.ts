@@ -367,7 +367,7 @@ async function main(): Promise<void> {
     select: { quantityRemaining: true },
   });
 
-  const acceptedRequest = await prisma.donationRequest.create({
+  const breadRequest = await prisma.donationRequest.create({
     data: {
       listingId: bread.listingId,
       recipientId: eldersId,
@@ -378,6 +378,7 @@ async function main(): Promise<void> {
         create: [{ itemId: bread.itemId, quantityRequested: acceptedQuantity }],
       },
     },
+    select: { requestId: true },
   });
 
   // The acceptance rule, applied through the shared service rather than by
@@ -398,17 +399,18 @@ async function main(): Promise<void> {
     data: { status: 'partially_claimed' },
   });
 
-  console.log('Creating a delivery assignment...');
+  console.log('Creating delivery assignment...');
+
+  const coordinatorId = users.get('coordinator@eatme.lk')!;
+  const driverId = users.get('driver@eatme.lk')!;
 
   await prisma.deliveryAssignment.create({
     data: {
-      requestId: acceptedRequest.requestId,
+      requestId: breadRequest.requestId,
       coordinatorId,
       driverId,
-      status: 'accepted',
-      noteToDriver: 'Collect from the side entrance on Main Street.',
-      assignedAt: hoursAgo(2),
-      respondedAt: hoursAgo(1),
+      status: 'pending_driver',
+      noteToDriver: 'Ten loaves, ready at the counter. Ask for Ayesha.',
     },
   });
 

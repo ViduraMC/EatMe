@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import authRoutes from './auth.routes';
+import driverRoutes from './driver.routes';
 import adminRoutes from './admin.routes';
 import donationRoutes from './donation.routes';
 import assignmentRoutes from './assignment.routes';
@@ -23,6 +24,7 @@ router.get('/health', (_req, res) => {
 });
 
 router.use('/auth', authRoutes);
+router.use('/driver', driverRoutes);
 router.use('/admin', adminRoutes);
 router.use('/donations', donationRoutes);
 router.use('/assignments', assignmentRoutes);
