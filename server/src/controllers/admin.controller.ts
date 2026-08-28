@@ -3,16 +3,22 @@ import { z } from 'zod';
 
 import {
   cancelAdminListing,
+  createAdminReport,
   createAdminStaff,
+  deleteAdminReport,
   deleteAdminStaff,
   getAdminAssignments,
   getAdminListings,
+  getAdminReport,
+  getAdminReports,
   getAdminRequests,
   getAdminStats,
   getAdminUsers,
+  updateAdminReport,
   updateAdminStaff,
   updateAdminUserStatus,
 } from '../services/admin.service';
+
 import { sendSuccess } from '../utils/apiResponse';
 
 const createStaffSchema = z.object({
@@ -29,6 +35,17 @@ const updateStaffSchema = z.object({
   email: z.string().trim().toLowerCase().email().max(150),
   phone: z.string().trim().min(9).max(20),
   address: z.string().trim().min(5),
+});
+
+const createReportSchema = z.object({
+  title: z.string().trim().min(2).max(150),
+  type: z.enum(['overall', 'users', 'donations', 'requests', 'deliveries']),
+  startDate: z.coerce.date(),
+  endDate: z.coerce.date(),
+});
+
+const updateReportSchema = z.object({
+  title: z.string().trim().min(2).max(150),
 });
 
 /** GET /api/admin/stats */
@@ -159,4 +176,76 @@ export async function adminAssignments(_req: Request, res: Response): Promise<vo
   const assignments = await getAdminAssignments();
 
   sendSuccess(res, { assignments });
+}
+
+/** POST /api/admin/reports */
+export async function adminCreateReport(req: Request, res: Response): Promise<void> {
+  const input = createReportSchema.parse(req.body);
+
+  const report = await createAdminReport({
+    adminId: req.user!.userId,
+    ...input,
+  });
+
+  sendSuccess(res, { report }, 201);
+}
+
+/** GET /api/admin/reports */
+export async function adminReports(req: Request, res: Response): Promise<void> {
+  const reports = await getAdminReports(req.user!.userId);
+
+  sendSuccess(res, { reports });
+}
+
+/** GET /api/admin/reports/:reportId */
+export async function adminReport(req: Request, res: Response): Promise<void> {
+  const reportId = Number(req.params.reportId);
+
+  if (!Number.isInteger(reportId) || reportId <= 0) {
+    res.status(400).json({
+      success: false,
+      message: 'Invalid report ID',
+    });
+    return;
+  }
+
+  const report = await getAdminReport(req.user!.userId, reportId);
+
+  sendSuccess(res, { report });
+}
+
+/** PUT /api/admin/reports/:reportId */
+export async function adminUpdateReport(req: Request, res: Response): Promise<void> {
+  const reportId = Number(req.params.reportId);
+
+  if (!Number.isInteger(reportId) || reportId <= 0) {
+    res.status(400).json({
+      success: false,
+      message: 'Invalid report ID',
+    });
+    return;
+  }
+
+  const input = updateReportSchema.parse(req.body);
+
+  const report = await updateAdminReport(req.user!.userId, reportId, input);
+
+  sendSuccess(res, { report });
+}
+
+/** DELETE /api/admin/reports/:reportId */
+export async function adminDeleteReport(req: Request, res: Response): Promise<void> {
+  const reportId = Number(req.params.reportId);
+
+  if (!Number.isInteger(reportId) || reportId <= 0) {
+    res.status(400).json({
+      success: false,
+      message: 'Invalid report ID',
+    });
+    return;
+  }
+
+  const deletedReport = await deleteAdminReport(req.user!.userId, reportId);
+
+  sendSuccess(res, { deletedReport });
 }

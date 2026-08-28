@@ -43,6 +43,21 @@ export interface UpdateAdminStaffInput {
   address: string;
 }
 
+export type AdminReportType =
+  'overall' | 'users' | 'donations' | 'requests' | 'deliveries';
+
+export interface CreateAdminReportInput {
+  adminId: number;
+  title: string;
+  type: AdminReportType;
+  startDate: Date;
+  endDate: Date;
+}
+
+export interface UpdateAdminReportInput {
+  title: string;
+}
+
 export async function getAdminStats() {
   const [
     totalUsers,
@@ -495,4 +510,221 @@ export async function updateAdminUserStatus(
     },
     select: adminUserSelect,
   });
+}
+
+function reportDateFilter(startDate: Date, endDate: Date) {
+  return {
+    gte: startDate,
+    lte: endDate,
+  };
+}
+
+async function generateReportData(type: AdminReportType, startDate: Date, endDate: Date) {
+  const createdAt = reportDateFilter(startDate, endDate);
+
+  if (type === 'users') {
+    const [total, admin, coordinator, donor, recipient, driver, active, pending] =
+      await Promise.all([
+        prisma.user.count({ where: { createdAt } }),
+        prisma.user.count({ where: { role: 'admin', createdAt } }),
+        prisma.user.count({ where: { role: 'coordinator', createdAt } }),
+        prisma.user.count({ where: { role: 'donor', createdAt } }),
+        prisma.user.count({ where: { role: 'recipient', createdAt } }),
+        prisma.user.count({ where: { role: 'driver', createdAt } }),
+        prisma.user.count({ where: { status: 'active', createdAt } }),
+        prisma.user.count({ where: { status: 'pending', createdAt } }),
+      ]);
+
+    return {
+      total,
+      byRole: {
+        admin,
+        coordinator,
+        donor,
+        recipient,
+        driver,
+      },
+      byStatus: {
+        active,
+        pending,
+      },
+    };
+  }
+
+  if (type === 'donations') {
+    const [total, open, partiallyClaimed, fullyClaimed, expired, cancelled] =
+      await Promise.all([
+        prisma.donationListing.count({ where: { createdAt } }),
+        prisma.donationListing.count({ where: { status: 'open', createdAt } }),
+        prisma.donationListing.count({
+          where: { status: 'partially_claimed', createdAt },
+        }),
+        prisma.donationListing.count({
+          where: { status: 'fully_claimed', createdAt },
+        }),
+        prisma.donationListing.count({ where: { status: 'expired', createdAt } }),
+        prisma.donationListing.count({
+          where: { status: 'cancelled', createdAt },
+        }),
+      ]);
+
+    return {
+      total,
+      byStatus: {
+        open,
+        partiallyClaimed,
+        fullyClaimed,
+        expired,
+        cancelled,
+      },
+    };
+  }
+
+  if (type === 'requests') {
+    const [total, pending, accepted, rejected, cancelled] = await Promise.all([
+      prisma.donationRequest.count({ where: { createdAt } }),
+      prisma.donationRequest.count({ where: { status: 'pending', createdAt } }),
+      prisma.donationRequest.count({ where: { status: 'accepted', createdAt } }),
+      prisma.donationRequest.count({ where: { status: 'rejected', createdAt } }),
+      prisma.donationRequest.count({ where: { status: 'cancelled', createdAt } }),
+    ]);
+
+    return {
+      total,
+      byStatus: {
+        pending,
+        accepted,
+        rejected,
+        cancelled,
+      },
+    };
+  }
+
+  if (type === 'deliveries') {
+    const [total, pendingDriver, accepted, declined, inTransit, completed, cancelled] =
+      await Promise.all([
+        prisma.deliveryAssignment.count({ where: { createdAt } }),
+        prisma.deliveryAssignment.count({
+          where: { status: 'pending_driver', createdAt },
+        }),
+        prisma.deliveryAssignment.count({
+          where: { status: 'accepted', createdAt },
+        }),
+        prisma.deliveryAssignment.count({
+          where: { status: 'declined', createdAt },
+        }),
+        prisma.deliveryAssignment.count({
+          where: { status: 'in_transit', createdAt },
+        }),
+        prisma.deliveryAssignment.count({
+          where: { status: 'completed', createdAt },
+        }),
+        prisma.deliveryAssignment.count({
+          where: { status: 'cancelled', createdAt },
+        }),
+      ]);
+
+    return {
+      total,
+      byStatus: {
+        pendingDriver,
+        accepted,
+        declined,
+        inTransit,
+        completed,
+        cancelled,
+      },
+    };
+  }
+
+  const [users, donations, requests, deliveries] = await Promise.all([
+    prisma.user.count({ where: { createdAt } }),
+    prisma.donationListing.count({ where: { createdAt } }),
+    prisma.donationRequest.count({ where: { createdAt } }),
+    prisma.deliveryAssignment.count({ where: { createdAt } }),
+  ]);
+
+  return {
+    users,
+    donations,
+    requests,
+    deliveries,
+  };
+}
+
+export async function createAdminReport(input: CreateAdminReportInput) {
+  if (input.startDate > input.endDate) {
+    throw ApiError.conflict('Start date cannot be after end date');
+  }
+
+  const data = await generateReportData(input.type, input.startDate, input.endDate);
+
+  return prisma.report.create({
+    data: {
+      adminId: input.adminId,
+      title: input.title.trim(),
+      type: input.type,
+      startDate: input.startDate,
+      endDate: input.endDate,
+      data,
+    },
+  });
+}
+
+export async function getAdminReports(adminId: number) {
+  return prisma.report.findMany({
+    where: {
+      adminId,
+    },
+    orderBy: {
+      createdAt: 'desc',
+    },
+  });
+}
+
+export async function getAdminReport(adminId: number, reportId: number) {
+  const report = await prisma.report.findFirst({
+    where: {
+      reportId,
+      adminId,
+    },
+  });
+
+  if (!report) {
+    throw ApiError.notFound('Report not found');
+  }
+
+  return report;
+}
+
+export async function updateAdminReport(
+  adminId: number,
+  reportId: number,
+  input: UpdateAdminReportInput,
+) {
+  await getAdminReport(adminId, reportId);
+
+  return prisma.report.update({
+    where: {
+      reportId,
+    },
+    data: {
+      title: input.title.trim(),
+    },
+  });
+}
+
+export async function deleteAdminReport(adminId: number, reportId: number) {
+  const report = await getAdminReport(adminId, reportId);
+
+  await prisma.report.delete({
+    where: {
+      reportId,
+    },
+  });
+
+  return {
+    reportId: report.reportId,
+    title: report.title,
+  };
 }

@@ -3,11 +3,16 @@ import { Router } from 'express';
 import {
   adminAssignments,
   adminCancelListing,
+  adminCreateReport,
   adminCreateStaff,
+  adminDeleteReport,
   adminDeleteStaff,
   adminListings,
+  adminReport,
+  adminReports,
   adminRequests,
   adminStats,
+  adminUpdateReport,
   adminUpdateStaff,
   adminUpdateUserStatus,
   adminUsers,
@@ -67,6 +72,36 @@ router.get(
   authenticate,
   requireRole('admin'),
   asyncHandler(adminAssignments),
+);
+
+router.post(
+  '/reports',
+  authenticate,
+  requireRole('admin'),
+  asyncHandler(adminCreateReport),
+);
+
+router.get('/reports', authenticate, requireRole('admin'), asyncHandler(adminReports));
+
+router.get(
+  '/reports/:reportId',
+  authenticate,
+  requireRole('admin'),
+  asyncHandler(adminReport),
+);
+
+router.put(
+  '/reports/:reportId',
+  authenticate,
+  requireRole('admin'),
+  asyncHandler(adminUpdateReport),
+);
+
+router.delete(
+  '/reports/:reportId',
+  authenticate,
+  requireRole('admin'),
+  asyncHandler(adminDeleteReport),
 );
 
 export default router;
