@@ -342,6 +342,25 @@ export function AdminHomeScreen({ navigation }: Props) {
 
               <Text style={styles.activityChevron}>›</Text>
             </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              style={({ pressed }) => [
+                styles.activityRow,
+                pressed && styles.activityRowPressed,
+              ]}
+              onPress={() => navigation.navigate('AdminReports')}
+            >
+              <View style={styles.activityDot} />
+
+              <View style={styles.activityContent}>
+                <Text style={styles.activityTitle}>Reports</Text>
+                <Text style={styles.activityDescription}>
+                  Generate and manage platform reports
+                </Text>
+              </View>
+
+              <Text style={styles.activityChevron}>›</Text>
+            </Pressable>
           </View>
         </>
       ) : null}

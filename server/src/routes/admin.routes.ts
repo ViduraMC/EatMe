@@ -7,10 +7,15 @@ import {
   adminCreateStaff,
   adminDeleteReport,
   adminDeleteStaff,
+  adminDeletedReports,
+  adminDownloadReport,
+  adminFinalizeReport,
   adminListings,
+  adminPermanentlyDeleteReport,
   adminReport,
   adminReports,
   adminRequests,
+  adminRestoreReport,
   adminStats,
   adminUpdateReport,
   adminUpdateStaff,
@@ -84,6 +89,20 @@ router.post(
 router.get('/reports', authenticate, requireRole('admin'), asyncHandler(adminReports));
 
 router.get(
+  '/reports/deleted',
+  authenticate,
+  requireRole('admin'),
+  asyncHandler(adminDeletedReports),
+);
+
+router.get(
+  '/reports/:reportId/download',
+  authenticate,
+  requireRole('admin'),
+  asyncHandler(adminDownloadReport),
+);
+
+router.get(
   '/reports/:reportId',
   authenticate,
   requireRole('admin'),
@@ -95,6 +114,27 @@ router.put(
   authenticate,
   requireRole('admin'),
   asyncHandler(adminUpdateReport),
+);
+
+router.patch(
+  '/reports/:reportId/finalize',
+  authenticate,
+  requireRole('admin'),
+  asyncHandler(adminFinalizeReport),
+);
+
+router.patch(
+  '/reports/:reportId/restore',
+  authenticate,
+  requireRole('admin'),
+  asyncHandler(adminRestoreReport),
+);
+
+router.delete(
+  '/reports/:reportId/permanent',
+  authenticate,
+  requireRole('admin'),
+  asyncHandler(adminPermanentlyDeleteReport),
 );
 
 router.delete(

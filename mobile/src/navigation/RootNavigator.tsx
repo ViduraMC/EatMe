@@ -29,6 +29,7 @@ import { AdminListingsScreen } from '../screens/admin/AdminListingsScreen';
 import { AdminRequestsScreen } from '../screens/admin/AdminRequestsScreen';
 import { AdminAssignmentsScreen } from '../screens/admin/AdminAssignmentsScreen';
 import { AdminUsersScreen } from '../screens/admin/AdminUsersScreen';
+import { AdminReportsScreen } from '../screens/admin/AdminReportsScreen';
 
 import type {
   AdminStackParamList,
@@ -205,7 +206,6 @@ function DriverNavigator() {
 }
 
 /** Naily adds admin screens here. */
-/** Naily adds admin screens here. */
 function AdminNavigator() {
   return (
     <AdminStack.Navigator screenOptions={screenOptions}>
@@ -237,6 +237,11 @@ function AdminNavigator() {
         name="AdminUsers"
         component={AdminUsersScreen}
         options={{ title: 'Users' }}
+      />
+      <AdminStack.Screen
+        name="AdminReports"
+        component={AdminReportsScreen}
+        options={{ title: 'Reports' }}
       />
     </AdminStack.Navigator>
   );

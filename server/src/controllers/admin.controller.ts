@@ -7,6 +7,8 @@ import {
   createAdminStaff,
   deleteAdminReport,
   deleteAdminStaff,
+  finalizeAdminReport,
+  generateAdminReportPdf,
   getAdminAssignments,
   getAdminListings,
   getAdminReport,
@@ -14,6 +16,9 @@ import {
   getAdminRequests,
   getAdminStats,
   getAdminUsers,
+  getDeletedAdminReports,
+  permanentlyDeleteAdminReport,
+  restoreAdminReport,
   updateAdminReport,
   updateAdminStaff,
   updateAdminUserStatus,
@@ -248,4 +253,89 @@ export async function adminDeleteReport(req: Request, res: Response): Promise<vo
   const deletedReport = await deleteAdminReport(req.user!.userId, reportId);
 
   sendSuccess(res, { deletedReport });
+}
+
+/** GET /api/admin/reports/deleted */
+export async function adminDeletedReports(req: Request, res: Response): Promise<void> {
+  const reports = await getDeletedAdminReports(req.user!.userId);
+
+  sendSuccess(res, { reports });
+}
+
+/** PATCH /api/admin/reports/:reportId/finalize */
+export async function adminFinalizeReport(req: Request, res: Response): Promise<void> {
+  const reportId = Number(req.params.reportId);
+
+  if (!Number.isInteger(reportId) || reportId <= 0) {
+    res.status(400).json({
+      success: false,
+      message: 'Invalid report ID',
+    });
+    return;
+  }
+
+  const report = await finalizeAdminReport(req.user!.userId, reportId);
+
+  sendSuccess(res, { report });
+}
+
+/** PATCH /api/admin/reports/:reportId/restore */
+export async function adminRestoreReport(req: Request, res: Response): Promise<void> {
+  const reportId = Number(req.params.reportId);
+
+  if (!Number.isInteger(reportId) || reportId <= 0) {
+    res.status(400).json({
+      success: false,
+      message: 'Invalid report ID',
+    });
+    return;
+  }
+
+  const report = await restoreAdminReport(req.user!.userId, reportId);
+
+  sendSuccess(res, { report });
+}
+
+/** DELETE /api/admin/reports/:reportId/permanent */
+export async function adminPermanentlyDeleteReport(
+  req: Request,
+  res: Response,
+): Promise<void> {
+  const reportId = Number(req.params.reportId);
+
+  if (!Number.isInteger(reportId) || reportId <= 0) {
+    res.status(400).json({
+      success: false,
+      message: 'Invalid report ID',
+    });
+    return;
+  }
+
+  const deletedReport = await permanentlyDeleteAdminReport(req.user!.userId, reportId);
+
+  sendSuccess(res, { deletedReport });
+}
+
+/** GET /api/admin/reports/:reportId/download */
+export async function adminDownloadReport(req: Request, res: Response): Promise<void> {
+  const reportId = Number(req.params.reportId);
+
+  if (!Number.isInteger(reportId) || reportId <= 0) {
+    res.status(400).json({
+      success: false,
+      message: 'Invalid report ID',
+    });
+    return;
+  }
+
+  const pdf = await generateAdminReportPdf(req.user!.userId, reportId);
+
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader(
+    'Content-Disposition',
+    `attachment; filename="eatme-report-${reportId}.pdf"`,
+  );
+  res.setHeader('Content-Length', pdf.length.toString());
+
+  res.status(200).send(pdf);
 }
