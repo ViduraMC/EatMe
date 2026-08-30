@@ -23,7 +23,6 @@ import { DriverProfileScreen } from '../screens/driver/DriverProfileScreen';
 import { DriversListScreen } from '../screens/coordinator/DriversListScreen';
 import { CreateAssignmentScreen } from '../screens/coordinator/CreateAssignmentScreen';
 import { AssignmentsListScreen } from '../screens/coordinator/AssignmentsListScreen';
-import { DriverHomeScreen } from '../screens/driver/DriverHomeScreen';
 import { AdminHomeScreen } from '../screens/admin/AdminHomeScreen';
 import { AdminListingsScreen } from '../screens/admin/AdminListingsScreen';
 import { AdminRequestsScreen } from '../screens/admin/AdminRequestsScreen';
