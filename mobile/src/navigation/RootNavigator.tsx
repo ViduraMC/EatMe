@@ -26,6 +26,7 @@ import { DriverProfileScreen } from '../screens/driver/DriverProfileScreen';
 import { DriversListScreen } from '../screens/coordinator/DriversListScreen';
 import { CreateAssignmentScreen } from '../screens/coordinator/CreateAssignmentScreen';
 import { AssignmentsListScreen } from '../screens/coordinator/AssignmentsListScreen';
+import { AssignmentDetailScreen } from '../screens/coordinator/AssignmentDetailScreen';
 import { AdminHomeScreen } from '../screens/admin/AdminHomeScreen';
 import { AdminListingsScreen } from '../screens/admin/AdminListingsScreen';
 import { AdminRequestsScreen } from '../screens/admin/AdminRequestsScreen';
@@ -171,6 +172,11 @@ function CoordinatorNavigator() {
         component={AssignmentsListScreen}
         options={{ title: 'Assignments' }}
       />
+      <CoordinatorStack.Screen
+        name="AssignmentDetail"
+        component={AssignmentDetailScreen}
+        options={{ title: 'Assignment Detail' }}
+      />
     </CoordinatorStack.Navigator>
   );
 }
@@ -186,7 +192,7 @@ const DRIVER_TAB_ICON: Record<keyof DriverTabParamList, string> = {
 function DriverNavigator() {
   return (
     <DriverTab.Navigator
-      screenOptions={({ route }) => ({
+      screenOptions={({ route }: { route: { name: string } }) => ({
         headerShown: false,
         tabBarActiveTintColor: colours.accent,
         tabBarInactiveTintColor: colours.textSecondary,
@@ -195,7 +201,7 @@ function DriverNavigator() {
           borderTopColor: colours.border,
         },
         tabBarLabelStyle: { fontSize: fontSize.label },
-        tabBarIcon: ({ color }) => (
+        tabBarIcon: ({ color }: { color: string }) => (
           <Text style={{ color, fontSize: 18 }}>
             {DRIVER_TAB_ICON[route.name as keyof DriverTabParamList]}
           </Text>

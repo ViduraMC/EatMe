@@ -53,6 +53,8 @@ export type CoordinatorStackParamList = {
   CreateAssignment: { requestId: number };
   /** US-C02: Live status tracking of all delivery assignments. */
   AssignmentsList: undefined;
+  /** US-C03: Assignment detail with timeline and reassign functionality. */
+  AssignmentDetail: { assignmentId: number };
 };
 
 /** Lakkhana. Driver and Delivery. */

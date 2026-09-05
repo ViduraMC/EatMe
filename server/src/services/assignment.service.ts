@@ -455,10 +455,12 @@ export async function rejectRequest(
 }
 
 /**
- * US-C02: Get all delivery assignments with status for coordinator tracking.
+ * US-C03: Get all delivery assignments with optional status filter and
+ * attention-first ordering (pending_driver and declined float to top).
  */
-export async function getAllAssignments() {
+export async function getAllAssignments(statusFilter?: AssignmentStatus) {
   const assignments = await prisma.deliveryAssignment.findMany({
+    where: statusFilter ? { status: statusFilter } : undefined,
     include: {
       driver: {
         select: {
@@ -511,5 +513,210 @@ export async function getAllAssignments() {
     },
   });
 
-  return assignments;
+  // Attention-first sort: statuses that need coordinator action float to top.
+  const priorityOrder: Record<AssignmentStatus, number> = {
+    pending_driver: 0,
+    declined: 1,
+    in_transit: 2,
+    accepted: 3,
+    cancelled: 4,
+    completed: 5,
+  };
+
+  return assignments.sort(
+    (a, b) => (priorityOrder[a.status] ?? 99) - (priorityOrder[b.status] ?? 99),
+  );
+}
+
+// ---------------------------------------------------------------------------
+// US-C03: Assignment detail with status timeline
+// ---------------------------------------------------------------------------
+
+interface TimelineEvent {
+  event: string;
+  timestamp: string;
+}
+
+/**
+ * Builds a chronological timeline from the nullable timestamp columns on a
+ * delivery assignment. No extra table needed — the columns already capture
+ * every meaningful state change.
+ */
+function buildTimeline(assignment: {
+  status: AssignmentStatus;
+  assignedAt: Date;
+  respondedAt: Date | null;
+  pickupDonorConfirmedAt: Date | null;
+  pickupDriverConfirmedAt: Date | null;
+  dropoffDriverConfirmedAt: Date | null;
+  dropoffRecipientConfirmedAt: Date | null;
+  completedAt: Date | null;
+}): TimelineEvent[] {
+  const events: TimelineEvent[] = [];
+
+  events.push({
+    event: 'Driver assigned',
+    timestamp: assignment.assignedAt.toISOString(),
+  });
+
+  if (assignment.respondedAt) {
+    const label =
+      assignment.status === 'declined' ? 'Driver declined' : 'Driver accepted';
+    events.push({ event: label, timestamp: assignment.respondedAt.toISOString() });
+  }
+
+  if (assignment.pickupDonorConfirmedAt) {
+    events.push({
+      event: 'Donor confirmed pickup',
+      timestamp: assignment.pickupDonorConfirmedAt.toISOString(),
+    });
+  }
+
+  if (assignment.pickupDriverConfirmedAt) {
+    events.push({
+      event: 'Driver confirmed pickup',
+      timestamp: assignment.pickupDriverConfirmedAt.toISOString(),
+    });
+  }
+
+  if (assignment.dropoffDriverConfirmedAt) {
+    events.push({
+      event: 'Driver confirmed drop-off',
+      timestamp: assignment.dropoffDriverConfirmedAt.toISOString(),
+    });
+  }
+
+  if (assignment.dropoffRecipientConfirmedAt) {
+    events.push({
+      event: 'Recipient confirmed delivery',
+      timestamp: assignment.dropoffRecipientConfirmedAt.toISOString(),
+    });
+  }
+
+  if (assignment.completedAt) {
+    events.push({
+      event: 'Delivery completed',
+      timestamp: assignment.completedAt.toISOString(),
+    });
+  }
+
+  return events.sort(
+    (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
+  );
+}
+
+/**
+ * US-C03: Fetch a single assignment with full detail, a status timeline, and
+ * the history of every assignment made against the same request (so the
+ * coordinator can see previous declines).
+ */
+export async function getAssignmentById(assignmentId: number) {
+  const assignment = await prisma.deliveryAssignment.findUnique({
+    where: { assignmentId },
+    include: {
+      driver: {
+        select: {
+          userId: true,
+          name: true,
+          phone: true,
+          isAvailable: true,
+        },
+      },
+      coordinator: {
+        select: {
+          userId: true,
+          name: true,
+        },
+      },
+      request: {
+        include: {
+          recipient: {
+            select: {
+              userId: true,
+              name: true,
+              organisationName: true,
+              phone: true,
+              address: true,
+            },
+          },
+          listing: {
+            include: {
+              donor: {
+                select: {
+                  userId: true,
+                  name: true,
+                  organisationName: true,
+                  phone: true,
+                  address: true,
+                },
+              },
+            },
+          },
+          items: {
+            include: {
+              item: true,
+            },
+          },
+        },
+      },
+    },
+  });
+
+  if (!assignment) {
+    throw ApiError.notFound('Assignment not found');
+  }
+
+  const timeline = buildTimeline(assignment);
+
+  // Every assignment for the same request, so the coordinator sees the
+  // full reassignment history.
+  const relatedAssignments = await prisma.deliveryAssignment.findMany({
+    where: { requestId: assignment.requestId },
+    select: {
+      assignmentId: true,
+      status: true,
+      driverId: true,
+      assignedAt: true,
+      respondedAt: true,
+      declineReason: true,
+      driver: { select: { name: true } },
+    },
+    orderBy: { assignedAt: 'asc' },
+  });
+
+  return { ...assignment, timeline, relatedAssignments };
+}
+
+/**
+ * US-C03: Reassign a declined assignment to a new driver. Creates a new
+ * assignment row so the declined one stays in the history — agreed at Sprint 0
+ * ERD sign-off.
+ */
+export async function reassignDriver(
+  coordinatorId: number,
+  declinedAssignmentId: number,
+  input: CreateAssignmentInput,
+) {
+  const old = await prisma.deliveryAssignment.findUnique({
+    where: { assignmentId: declinedAssignmentId },
+  });
+
+  if (!old) {
+    throw ApiError.notFound('Assignment not found');
+  }
+
+  if (old.status !== 'declined') {
+    throw ApiError.badRequest(
+      'Only a declined assignment can be reassigned. This one is ' +
+        old.status.replace(/_/g, ' '),
+    );
+  }
+
+  // Reuse the existing createAssignment transaction — it inserts a fresh row
+  // for the same request and validates the driver.
+  return createAssignment(coordinatorId, {
+    requestId: old.requestId,
+    driverId: input.driverId,
+    noteToDriver: input.noteToDriver ?? null,
+  });
 }
