@@ -1,7 +1,8 @@
 import React from 'react';
-import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 
 import { useAuth } from '../context/AuthContext';
 import { colours, fontSize, fontWeight } from '../constants/theme';
@@ -19,8 +20,17 @@ import { ListingDetailScreen as RecipientListingDetailScreen } from '../screens/
 import { CreateRequestScreen } from '../screens/recipient/CreateRequestScreen';
 import { MyRequestsScreen } from '../screens/recipient/MyRequestsScreen';
 import { CoordinatorHomeScreen } from '../screens/coordinator/CoordinatorHomeScreen';
-import { DriverHomeScreen } from '../screens/driver/DriverHomeScreen';
+import { DriverDashboardScreen } from '../screens/driver/DriverDashboardScreen';
+import { DeliveryHistoryScreen } from '../screens/driver/DeliveryHistoryScreen';
+import { DriverProfileScreen } from '../screens/driver/DriverProfileScreen';
+import { DriversListScreen } from '../screens/coordinator/DriversListScreen';
+import { CreateAssignmentScreen } from '../screens/coordinator/CreateAssignmentScreen';
+import { AssignmentsListScreen } from '../screens/coordinator/AssignmentsListScreen';
 import { AdminHomeScreen } from '../screens/admin/AdminHomeScreen';
+import { AdminListingsScreen } from '../screens/admin/AdminListingsScreen';
+import { AdminRequestsScreen } from '../screens/admin/AdminRequestsScreen';
+import { AdminAssignmentsScreen } from '../screens/admin/AdminAssignmentsScreen';
+import { AdminUsersScreen } from '../screens/admin/AdminUsersScreen';
 
 import type {
   AdminStackParamList,
@@ -28,6 +38,7 @@ import type {
   CoordinatorStackParamList,
   DonorStackParamList,
   DriverStackParamList,
+  DriverTabParamList,
   RecipientStackParamList,
 } from './types';
 
@@ -145,23 +156,72 @@ function CoordinatorNavigator() {
         component={CoordinatorHomeScreen}
         options={{ title: 'Deliveries' }}
       />
+      <CoordinatorStack.Screen
+        name="DriversList"
+        component={DriversListScreen}
+        options={{ title: 'Drivers' }}
+      />
+      <CoordinatorStack.Screen
+        name="CreateAssignment"
+        component={CreateAssignmentScreen}
+        options={{ title: 'Assign Driver' }}
+      />
+      <CoordinatorStack.Screen
+        name="AssignmentsList"
+        component={AssignmentsListScreen}
+        options={{ title: 'Assignments' }}
+      />
     </CoordinatorStack.Navigator>
   );
 }
 
 /** Lakkhana adds driver screens here. */
+const DriverTab = createBottomTabNavigator<DriverTabParamList>();
+const DRIVER_TAB_ICON: Record<keyof DriverTabParamList, string> = {
+  DriverDashboard: '\u{1F69A}',
+  DriverHistory: '\u2261',
+  DriverProfile: '\u25D1',
+};
+
 function DriverNavigator() {
   return (
-    <DriverStack.Navigator screenOptions={screenOptions}>
-      <DriverStack.Screen
-        name="DriverHome"
-        component={DriverHomeScreen}
-        options={{ title: 'My Deliveries' }}
+    <DriverTab.Navigator
+      screenOptions={({ route }) => ({
+        headerShown: false,
+        tabBarActiveTintColor: colours.accent,
+        tabBarInactiveTintColor: colours.textSecondary,
+        tabBarStyle: {
+          backgroundColor: colours.background,
+          borderTopColor: colours.border,
+        },
+        tabBarLabelStyle: { fontSize: fontSize.label },
+        tabBarIcon: ({ color }) => (
+          <Text style={{ color, fontSize: 18 }}>
+            {DRIVER_TAB_ICON[route.name as keyof DriverTabParamList]}
+          </Text>
+        ),
+      })}
+    >
+      <DriverTab.Screen
+        name="DriverDashboard"
+        component={DriverDashboardScreen}
+        options={{ title: 'Deliveries' }}
       />
-    </DriverStack.Navigator>
+      <DriverTab.Screen
+        name="DriverHistory"
+        component={DeliveryHistoryScreen}
+        options={{ title: 'History' }}
+      />
+      <DriverTab.Screen
+        name="DriverProfile"
+        component={DriverProfileScreen}
+        options={{ title: 'Profile' }}
+      />
+    </DriverTab.Navigator>
   );
 }
 
+/** Naily adds admin screens here. */
 /** Naily adds admin screens here. */
 function AdminNavigator() {
   return (
@@ -170,6 +230,30 @@ function AdminNavigator() {
         name="AdminHome"
         component={AdminHomeScreen}
         options={{ title: 'Administration' }}
+      />
+
+      <AdminStack.Screen
+        name="AdminListings"
+        component={AdminListingsScreen}
+        options={{ title: 'Donation Listings' }}
+      />
+
+      <AdminStack.Screen
+        name="AdminRequests"
+        component={AdminRequestsScreen}
+        options={{ title: 'Donation Requests' }}
+      />
+
+      <AdminStack.Screen
+        name="AdminAssignments"
+        component={AdminAssignmentsScreen}
+        options={{ title: 'Delivery Assignments' }}
+      />
+
+      <AdminStack.Screen
+        name="AdminUsers"
+        component={AdminUsersScreen}
+        options={{ title: 'Users' }}
       />
     </AdminStack.Navigator>
   );

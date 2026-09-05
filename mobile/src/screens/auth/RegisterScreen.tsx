@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Button, Input, ScreenContainer } from '../../components';
 import { useAuth } from '../../context/AuthContext';
@@ -11,10 +11,8 @@ import type { AuthStackParamList } from '../../navigation/types';
 type Props = NativeStackScreenProps<AuthStackParamList, 'Register'>;
 
 /**
- * The four roles a person can sign up as.
- *
- * Admin is absent, and the server rejects it at the schema level too. The two
- * have to stay in step with server/src/controllers/auth.controller.ts.
+ * Public registration is available to donors and recipients.
+ * Coordinator and driver accounts are created by an administrator.
  */
 const ROLE_OPTIONS: Array<{
   value: RegisterableRole;
@@ -30,16 +28,6 @@ const ROLE_OPTIONS: Array<{
     value: 'recipient',
     title: 'Recipient',
     description: 'I collect food for an organisation',
-  },
-  {
-    value: 'coordinator',
-    title: 'Coordinator',
-    description: 'I arrange deliveries between the two',
-  },
-  {
-    value: 'driver',
-    title: 'Driver',
-    description: 'I collect and deliver the food',
   },
 ];
 
@@ -84,12 +72,23 @@ export function RegisterScreen({ navigation }: Props) {
         phone: phone.trim(),
         address: address.trim(),
         role,
-        // Only sent for roles where it means something.
         ...(showsOrganisation && organisationName.trim()
           ? { organisationName: organisationName.trim() }
           : {}),
       });
-      // The root navigator switches stacks on its own once user is set.
+
+      if (role === 'recipient') {
+        Alert.alert(
+          'Registration submitted',
+          'Your recipient account is awaiting administrator approval. You can sign in once your account has been approved.',
+          [
+            {
+              text: 'OK',
+              onPress: () => navigation.goBack(),
+            },
+          ],
+        );
+      }
     } catch (err) {
       setError(getErrorMessage(err));
     }

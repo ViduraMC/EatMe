@@ -1,6 +1,9 @@
 import { Router } from 'express';
 import authRoutes from './auth.routes';
+import driverRoutes from './driver.routes';
+import adminRoutes from './admin.routes';
 import donationRoutes from './donation.routes';
+import assignmentRoutes from './assignment.routes';
 import { sendSuccess } from '../utils/apiResponse';
 import requestRoutes from './requests.routes';
 
@@ -22,14 +25,21 @@ router.get('/health', (_req, res) => {
 });
 
 router.use('/auth', authRoutes);
+router.use('/driver', driverRoutes);
+router.use('/admin', adminRoutes);
 router.use('/donations', donationRoutes);
 router.use('/requests', requestRoutes);
 /*
  * Module routes are mounted here as each owner builds them:
  *
  *   router.use('/assignments', assignmentRoutes); // Kaushal
+router.use('/assignments', assignmentRoutes);
+
+
+ * Module routes are mounted here as each owner builds them:
+ *
+ *   router.use('/requests',    requestRoutes);    // Haritha
  *   router.use('/driver',      driverRoutes);     // Lakkhana
- *   router.use('/admin',       adminRoutes);      // Naily
  */
 
 export default router;

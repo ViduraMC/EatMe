@@ -8,10 +8,10 @@
 
 export type UserRole = 'admin' | 'coordinator' | 'donor' | 'recipient' | 'driver';
 
-/** The roles a person can pick on the register screen. Admin is not one. */
-export type RegisterableRole = Exclude<UserRole, 'admin'>;
+/** Public registration is only available to donors and recipients. */
+export type RegisterableRole = Extract<UserRole, 'donor' | 'recipient'>;
 
-export type UserStatus = 'active' | 'inactive';
+export type UserStatus = 'pending' | 'active' | 'inactive' | 'rejected';
 
 export interface User {
   userId: number;
@@ -59,3 +59,6 @@ export interface LoginInput {
   email: string;
   password: string;
 }
+
+//driver
+export * from './driver';

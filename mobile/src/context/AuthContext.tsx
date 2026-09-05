@@ -20,6 +20,7 @@ interface AuthContextValue {
   login: (input: LoginInput) => Promise<void>;
   register: (input: RegisterInput) => Promise<void>;
   logout: () => Promise<void>;
+  updateUser: (patch: Partial<User>) => void;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -109,8 +110,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const register = useCallback(
     async (input: RegisterInput) => {
       setIsSubmitting(true);
+
       try {
         const payload = await registerRequest(input);
+
+        if (payload.user.status === 'pending') {
+          return;
+        }
+
         await applyAuth(payload);
       } finally {
         setIsSubmitting(false);
@@ -123,9 +130,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await clearSession();
   }, [clearSession]);
 
+  const updateUser = useCallback((patch: Partial<User>) => {
+    setUser((current) => (current ? { ...current, ...patch } : current));
+  }, []);
+
   const value = useMemo(
-    () => ({ user, isRestoring, isSubmitting, login, register, logout }),
-    [user, isRestoring, isSubmitting, login, register, logout],
+    () => ({ user, isRestoring, isSubmitting, login, register, logout, updateUser }),
+    [user, isRestoring, isSubmitting, login, register, logout, updateUser],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

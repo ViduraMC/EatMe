@@ -48,17 +48,31 @@ export type RecipientStackParamList = {
 /** Kaushal. Delivery Coordination. */
 export type CoordinatorStackParamList = {
   CoordinatorHome: undefined;
-  // PendingAssignments: undefined;
+  DriversList: undefined;
+  /** US-C02: Coordinator picks a driver for a specific accepted request. */
+  CreateAssignment: { requestId: number };
+  /** US-C02: Live status tracking of all delivery assignments. */
+  AssignmentsList: undefined;
 };
 
 /** Lakkhana. Driver and Delivery. */
+export type DriverTabParamList = {
+  DriverDashboard: undefined;
+  DriverHistory: undefined;
+  DriverProfile: undefined;
+};
+
 export type DriverStackParamList = {
-  DriverHome: undefined;
-  // MyDeliveries: undefined;
+  DriverTabs: undefined;
+  // DeliveryDetail: { assignmentId: number };   // US-DR02
+  // DeclineAssignment: { assignmentId: number };// US-DR02
 };
 
 /** Naily. Administration. */
 export type AdminStackParamList = {
   AdminHome: undefined;
-  // AllListings: undefined;
+  AdminListings: undefined;
+  AdminRequests: undefined;
+  AdminAssignments: undefined;
+  AdminUsers: undefined;
 };

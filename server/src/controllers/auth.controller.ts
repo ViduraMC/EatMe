@@ -23,9 +23,9 @@ export const registerSchema = z.object({
   password: z.string().min(8, 'Password must be at least 8 characters').max(72),
   phone: z.string().trim().min(9, 'Enter a valid phone number').max(20),
   address: z.string().trim().min(5, 'Enter a full address'),
-  role: z.enum(['donor', 'recipient', 'coordinator', 'driver'], {
+  role: z.enum(['donor', 'recipient'], {
     errorMap: () => ({
-      message: 'Role must be one of: donor, recipient, coordinator, driver',
+      message: 'Role must be one of: donor, recipient',
     }),
   }),
   organisationName: z.string().trim().max(150).optional(),
@@ -59,6 +59,7 @@ export async function register(req: Request, res: Response): Promise<void> {
       phone: input.phone,
       address: input.address,
       role: input.role,
+      status: input.role === 'recipient' ? 'pending' : 'active',
       organisationName: input.organisationName ?? null,
     },
     select: publicUserSelect,
@@ -93,7 +94,17 @@ export async function login(req: Request, res: Response): Promise<void> {
     throw genericFailure;
   }
 
-  if (user.status !== 'active') {
+  if (user.status === 'pending') {
+    throw ApiError.forbidden('Your account is awaiting administrator approval.');
+  }
+
+  if (user.status === 'rejected') {
+    throw ApiError.forbidden(
+      'Your registration was not approved. Contact an administrator.',
+    );
+  }
+
+  if (user.status === 'inactive') {
     throw ApiError.forbidden('This account is inactive. Contact an administrator.');
   }
 
