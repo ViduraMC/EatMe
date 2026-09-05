@@ -15,7 +15,10 @@ import { AddItemsScreen } from '../screens/donor/AddItemsScreen';
 import { ListingDetailScreen } from '../screens/donor/ListingDetailScreen';
 import { IncomingRequestsScreen } from '../screens/donor/IncomingRequestsScreen';
 import { ConfirmPickupScreen } from '../screens/donor/ConfirmPickupScreen';
-import { RecipientHomeScreen } from '../screens/recipient/RecipientHomeScreen';
+import { BrowseListingsScreen } from '../screens/recipient/BrowseListingsScreen';
+import { ListingDetailScreen as RecipientListingDetailScreen } from '../screens/recipient/ListingDetailScreen';
+import { CreateRequestScreen } from '../screens/recipient/CreateRequestScreen';
+import { MyRequestsScreen } from '../screens/recipient/MyRequestsScreen';
 import { CoordinatorHomeScreen } from '../screens/coordinator/CoordinatorHomeScreen';
 import { DriverDashboardScreen } from '../screens/driver/DriverDashboardScreen';
 import { DeliveryHistoryScreen } from '../screens/driver/DeliveryHistoryScreen';
@@ -116,14 +119,29 @@ function DonorNavigator() {
   );
 }
 
-/** Haritha adds recipient screens here. */
+/** Food Requests. Owner: Haritha. */
 function RecipientNavigator() {
   return (
     <RecipientStack.Navigator screenOptions={screenOptions}>
       <RecipientStack.Screen
-        name="RecipientHome"
-        component={RecipientHomeScreen}
+        name="BrowseListings"
+        component={BrowseListingsScreen}
         options={{ title: 'Available Food' }}
+      />
+      <RecipientStack.Screen
+        name="ListingDetail"
+        component={RecipientListingDetailScreen}
+        options={{ title: 'Listing' }}
+      />
+      <RecipientStack.Screen
+        name="CreateRequest"
+        component={CreateRequestScreen}
+        options={{ title: 'Request Food' }}
+      />
+      <RecipientStack.Screen
+        name="MyRequests"
+        component={MyRequestsScreen}
+        options={{ title: 'My Requests' }}
       />
     </RecipientStack.Navigator>
   );
