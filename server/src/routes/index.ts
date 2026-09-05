@@ -29,17 +29,6 @@ router.use('/driver', driverRoutes);
 router.use('/admin', adminRoutes);
 router.use('/donations', donationRoutes);
 router.use('/requests', requestRoutes);
-/*
- * Module routes are mounted here as each owner builds them:
- *
- *   router.use('/assignments', assignmentRoutes); // Kaushal
 router.use('/assignments', assignmentRoutes);
-
-
- * Module routes are mounted here as each owner builds them:
- *
- *   router.use('/requests',    requestRoutes);    // Haritha
- *   router.use('/driver',      driverRoutes);     // Lakkhana
- */
 
 export default router;

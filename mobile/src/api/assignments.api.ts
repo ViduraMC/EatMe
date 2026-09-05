@@ -1,7 +1,9 @@
 import { api } from './client';
 import type { ApiSuccess } from '../types';
 import type {
+  AssignmentDetail,
   AssignmentQueueRequest,
+  AssignmentStatus,
   CoordinatorAssignment,
   CoordinatorStats,
   CreateAssignmentPayload,
@@ -10,7 +12,7 @@ import type {
 } from '../types/assignment';
 
 /**
- * API calls for /api/assignments (Delivery Coordination – US-C01 & US-C02).
+ * API calls for /api/assignments (Delivery Coordination – US-C01, US-C02, US-C03).
  */
 
 export async function fetchAssignmentQueue(): Promise<AssignmentQueueRequest[]> {
@@ -50,8 +52,38 @@ export async function rejectRequest(
   await api.post(`/assignments/reject-request/${requestId}`, payload);
 }
 
-export async function fetchAssignments(): Promise<CoordinatorAssignment[]> {
-  const { data } =
-    await api.get<ApiSuccess<{ assignments: CoordinatorAssignment[] }>>('/assignments');
+// ── US-C03 ────────────────────────────────────────────────────────────────────
+
+/** Fetch all assignments, optionally filtered by status. */
+export async function fetchAssignments(
+  status?: AssignmentStatus,
+): Promise<CoordinatorAssignment[]> {
+  const params = status ? { status } : undefined;
+  const { data } = await api.get<ApiSuccess<{ assignments: CoordinatorAssignment[] }>>(
+    '/assignments',
+    { params },
+  );
   return data.data.assignments;
+}
+
+/** Fetch a single assignment with timeline and reassignment history. */
+export async function fetchAssignmentDetail(
+  assignmentId: number,
+): Promise<AssignmentDetail> {
+  const { data } = await api.get<ApiSuccess<{ assignment: AssignmentDetail }>>(
+    `/assignments/${assignmentId}`,
+  );
+  return data.data.assignment;
+}
+
+/** Reassign a declined assignment to a new driver. */
+export async function reassignDriver(
+  assignmentId: number,
+  payload: CreateAssignmentPayload,
+): Promise<CoordinatorAssignment> {
+  const { data } = await api.post<ApiSuccess<{ assignment: CoordinatorAssignment }>>(
+    `/assignments/${assignmentId}/reassign`,
+    payload,
+  );
+  return data.data.assignment;
 }
