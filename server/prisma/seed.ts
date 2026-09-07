@@ -399,11 +399,19 @@ async function main(): Promise<void> {
     data: { status: 'partially_claimed' },
   });
 
-  console.log('Creating delivery assignment...');
+  console.log('Creating delivery assignments...');
 
-  const coordinatorId = users.get('coordinator@eatme.lk')!;
-  const driverId = users.get('driver@eatme.lk')!;
+  /*
+   * Two assignments, because the driver and the donor need different states to
+   * demonstrate their own flows.
+   *
+   * Multiple assignment rows against one request is normal in this domain: a
+   * declined assignment is never overwritten, the coordinator inserts a new
+   * row, so the history survives.
+   */
 
+  // 1. Waiting on the driver. This is what Lakkhana's accept and decline
+  //    screens act on.
   await prisma.deliveryAssignment.create({
     data: {
       requestId: breadRequest.requestId,
@@ -411,6 +419,21 @@ async function main(): Promise<void> {
       driverId,
       status: 'pending_driver',
       noteToDriver: 'Ten loaves, ready at the counter. Ask for Ayesha.',
+    },
+  });
+
+  // 2. Driver has accepted, neither side has confirmed the handover yet. This
+  //    is what the donor's Confirm Pickup screen acts on. Without it that
+  //    screen correctly shows "nothing to confirm" and cannot be demonstrated.
+  await prisma.deliveryAssignment.create({
+    data: {
+      requestId: breadRequest.requestId,
+      coordinatorId,
+      driverId,
+      status: 'accepted',
+      noteToDriver: 'Second run. Collect from the side entrance on Main Street.',
+      assignedAt: hoursAgo(2),
+      respondedAt: hoursAgo(1),
     },
   });
 
