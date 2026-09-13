@@ -6,6 +6,8 @@ import { sendSuccess } from '../utils/apiResponse';
 import { driverAssignmentSelect } from '../types/driver';
 import {
   assertAwaitingDriverResponse,
+  confirmDropoffAsDriver,
+  confirmPickupAsDriver,
   getOwnAssignmentOrThrow,
 } from '../services/assignment.service';
 
@@ -19,6 +21,25 @@ export const declineAssignmentSchema = z.object({
     .trim()
     .min(1, 'Select or describe a reason')
     .max(500, 'Keep the reason under 500 characters'),
+});
+
+/** US-DR03: Confirm Pickup and Confirm Drop Off both take an optional note. */
+export const confirmPickupSchema = z.object({
+  notes: z
+    .string()
+    .trim()
+    .max(500, 'Notes must be under 500 characters')
+    .optional()
+    .nullable(),
+});
+
+export const confirmDropoffSchema = z.object({
+  notes: z
+    .string()
+    .trim()
+    .max(500, 'Notes must be under 500 characters')
+    .optional()
+    .nullable(),
 });
 
 /*Statuses the mobile app can filter assignment list by */
@@ -133,6 +154,30 @@ export async function acceptAssignment(req: Request, res: Response): Promise<voi
     where: { assignmentId },
     data: { status: 'accepted', respondedAt: new Date() },
     select: driverAssignmentSelect,
+  });
+
+  sendSuccess(res, { assignment });
+}
+
+//PUT: /api/driver/assignments/:id/confirm-pickup
+export async function confirmPickup(req: Request, res: Response): Promise<void> {
+  const assignmentId = parseAssignmentId(req.params.id);
+  const input = req.body as z.infer<typeof confirmPickupSchema>;
+
+  const assignment = await confirmPickupAsDriver(assignmentId, req.user!.userId, {
+    notes: input?.notes ?? null,
+  });
+
+  sendSuccess(res, { assignment });
+}
+
+//PUT: /api/driver/assignments/:id/confirm-dropoff
+export async function confirmDropoff(req: Request, res: Response): Promise<void> {
+  const assignmentId = parseAssignmentId(req.params.id);
+  const input = req.body as z.infer<typeof confirmDropoffSchema>;
+
+  const assignment = await confirmDropoffAsDriver(assignmentId, req.user!.userId, {
+    notes: input?.notes ?? null,
   });
 
   sendSuccess(res, { assignment });

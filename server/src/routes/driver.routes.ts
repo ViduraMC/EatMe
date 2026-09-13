@@ -2,6 +2,10 @@ import { Router } from 'express';
 import {
   acceptAssignment,
   availabilitySchema,
+  confirmDropoff,
+  confirmDropoffSchema,
+  confirmPickup,
+  confirmPickupSchema,
   declineAssignment,
   declineAssignmentSchema,
   getAssignment,
@@ -31,6 +35,18 @@ router.put(
   '/assignments/:id/decline',
   validateBody(declineAssignmentSchema),
   asyncHandler(declineAssignment),
+);
+
+// US-DR03: Confirm Pickup and Confirm Drop Off (driver side).
+router.put(
+  '/assignments/:id/confirm-pickup',
+  validateBody(confirmPickupSchema),
+  asyncHandler(confirmPickup),
+);
+router.put(
+  '/assignments/:id/confirm-dropoff',
+  validateBody(confirmDropoffSchema),
+  asyncHandler(confirmDropoff),
 );
 
 export default router;

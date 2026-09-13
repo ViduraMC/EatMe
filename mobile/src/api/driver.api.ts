@@ -57,3 +57,28 @@ export async function declineAssignmentRequest(
 
   return data.data.assignment;
 }
+
+// US-DR03: Confirm Pickup and Confirm Drop Off (driver side).
+export async function confirmPickupRequest(
+  id: number,
+  notes?: string | null,
+): Promise<DriverAssignment> {
+  const { data } = await api.put<ApiSuccess<{ assignment: DriverAssignment }>>(
+    `/driver/assignments/${id}/confirm-pickup`,
+    { notes: notes ?? null },
+  );
+
+  return data.data.assignment;
+}
+
+export async function confirmDropoffRequest(
+  id: number,
+  notes?: string | null,
+): Promise<DriverAssignment> {
+  const { data } = await api.put<ApiSuccess<{ assignment: DriverAssignment }>>(
+    `/driver/assignments/${id}/confirm-dropoff`,
+    { notes: notes ?? null },
+  );
+
+  return data.data.assignment;
+}
