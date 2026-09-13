@@ -198,3 +198,26 @@ export interface CoordinatorAssignment {
     items: RequestedItem[];
   };
 }
+
+// ── US-C03: Assignment detail with timeline ───────────────────────────────────
+
+export interface TimelineEvent {
+  event: string;
+  timestamp: string;
+}
+
+export interface RelatedAssignment {
+  assignmentId: number;
+  status: AssignmentStatus;
+  driverId: number;
+  assignedAt: string;
+  respondedAt: string | null;
+  declineReason: string | null;
+  driver: { name: string };
+}
+
+/** Extended assignment with timeline and reassignment history. */
+export interface AssignmentDetail extends CoordinatorAssignment {
+  timeline: TimelineEvent[];
+  relatedAssignments: RelatedAssignment[];
+}

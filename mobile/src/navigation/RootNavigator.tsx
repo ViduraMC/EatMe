@@ -15,7 +15,10 @@ import { AddItemsScreen } from '../screens/donor/AddItemsScreen';
 import { ListingDetailScreen } from '../screens/donor/ListingDetailScreen';
 import { IncomingRequestsScreen } from '../screens/donor/IncomingRequestsScreen';
 import { ConfirmPickupScreen } from '../screens/donor/ConfirmPickupScreen';
-import { RecipientHomeScreen } from '../screens/recipient/RecipientHomeScreen';
+import { BrowseListingsScreen } from '../screens/recipient/BrowseListingsScreen';
+import { ListingDetailScreen as RecipientListingDetailScreen } from '../screens/recipient/ListingDetailScreen';
+import { CreateRequestScreen } from '../screens/recipient/CreateRequestScreen';
+import { MyRequestsScreen } from '../screens/recipient/MyRequestsScreen';
 import { CoordinatorHomeScreen } from '../screens/coordinator/CoordinatorHomeScreen';
 import { DriverDashboardScreen } from '../screens/driver/DriverDashboardScreen';
 import { DeliveryHistoryScreen } from '../screens/driver/DeliveryHistoryScreen';
@@ -23,7 +26,7 @@ import { DriverProfileScreen } from '../screens/driver/DriverProfileScreen';
 import { DriversListScreen } from '../screens/coordinator/DriversListScreen';
 import { CreateAssignmentScreen } from '../screens/coordinator/CreateAssignmentScreen';
 import { AssignmentsListScreen } from '../screens/coordinator/AssignmentsListScreen';
-import { DriverHomeScreen } from '../screens/driver/DriverHomeScreen';
+import { AssignmentDetailScreen } from '../screens/coordinator/AssignmentDetailScreen';
 import { AdminHomeScreen } from '../screens/admin/AdminHomeScreen';
 import { AdminListingsScreen } from '../screens/admin/AdminListingsScreen';
 import { AdminRequestsScreen } from '../screens/admin/AdminRequestsScreen';
@@ -117,14 +120,29 @@ function DonorNavigator() {
   );
 }
 
-/** Haritha adds recipient screens here. */
+/** Food Requests. Owner: Haritha. */
 function RecipientNavigator() {
   return (
     <RecipientStack.Navigator screenOptions={screenOptions}>
       <RecipientStack.Screen
-        name="RecipientHome"
-        component={RecipientHomeScreen}
+        name="BrowseListings"
+        component={BrowseListingsScreen}
         options={{ title: 'Available Food' }}
+      />
+      <RecipientStack.Screen
+        name="ListingDetail"
+        component={RecipientListingDetailScreen}
+        options={{ title: 'Listing' }}
+      />
+      <RecipientStack.Screen
+        name="CreateRequest"
+        component={CreateRequestScreen}
+        options={{ title: 'Request Food' }}
+      />
+      <RecipientStack.Screen
+        name="MyRequests"
+        component={MyRequestsScreen}
+        options={{ title: 'My Requests' }}
       />
     </RecipientStack.Navigator>
   );
@@ -154,6 +172,11 @@ function CoordinatorNavigator() {
         component={AssignmentsListScreen}
         options={{ title: 'Assignments' }}
       />
+      <CoordinatorStack.Screen
+        name="AssignmentDetail"
+        component={AssignmentDetailScreen}
+        options={{ title: 'Assignment Detail' }}
+      />
     </CoordinatorStack.Navigator>
   );
 }
@@ -169,7 +192,7 @@ const DRIVER_TAB_ICON: Record<keyof DriverTabParamList, string> = {
 function DriverNavigator() {
   return (
     <DriverTab.Navigator
-      screenOptions={({ route }) => ({
+      screenOptions={({ route }: { route: { name: string } }) => ({
         headerShown: false,
         tabBarActiveTintColor: colours.accent,
         tabBarInactiveTintColor: colours.textSecondary,
@@ -178,7 +201,7 @@ function DriverNavigator() {
           borderTopColor: colours.border,
         },
         tabBarLabelStyle: { fontSize: fontSize.label },
-        tabBarIcon: ({ color }) => (
+        tabBarIcon: ({ color }: { color: string }) => (
           <Text style={{ color, fontSize: 18 }}>
             {DRIVER_TAB_ICON[route.name as keyof DriverTabParamList]}
           </Text>

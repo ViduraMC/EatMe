@@ -39,9 +39,10 @@ export type DonorStackParamList = {
 
 /** Haritha. Food Requests. */
 export type RecipientStackParamList = {
-  RecipientHome: undefined;
-  // BrowseListings: undefined;
-  // MyRequests: undefined;
+  BrowseListings: undefined;
+  ListingDetail: { listingId: number };
+  CreateRequest: { listingId: number };
+  MyRequests: undefined;
 };
 
 /** Kaushal. Delivery Coordination. */
@@ -52,6 +53,8 @@ export type CoordinatorStackParamList = {
   CreateAssignment: { requestId: number };
   /** US-C02: Live status tracking of all delivery assignments. */
   AssignmentsList: undefined;
+  /** US-C03: Assignment detail with timeline and reassign functionality. */
+  AssignmentDetail: { assignmentId: number };
 };
 
 /** Lakkhana. Driver and Delivery. */

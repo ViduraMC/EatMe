@@ -5,6 +5,7 @@ import adminRoutes from './admin.routes';
 import donationRoutes from './donation.routes';
 import assignmentRoutes from './assignment.routes';
 import { sendSuccess } from '../utils/apiResponse';
+import requestRoutes from './requests.routes';
 
 const router = Router();
 
@@ -27,13 +28,7 @@ router.use('/auth', authRoutes);
 router.use('/driver', driverRoutes);
 router.use('/admin', adminRoutes);
 router.use('/donations', donationRoutes);
+router.use('/requests', requestRoutes);
 router.use('/assignments', assignmentRoutes);
-
-/*
- * Module routes are mounted here as each owner builds them:
- *
- *   router.use('/requests',    requestRoutes);    // Haritha
- *   router.use('/driver',      driverRoutes);     // Lakkhana
- */
 
 export default router;
