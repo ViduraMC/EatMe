@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -12,7 +11,6 @@ import {
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import { api, getErrorMessage } from '../../api/client';
-import { useAuth } from '../../context/AuthContext';
 import { colours, fontSize, fontWeight, layout, spacing } from '../../constants/theme';
 
 import type { AdminStackParamList } from '../../navigation/types';
@@ -49,32 +47,10 @@ interface WeeklyBar {
 }
 
 export function AdminHomeScreen({ navigation }: Props) {
-  const { logout } = useAuth();
-
   const [stats, setStats] = useState<AdminStats | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-
-  const handleLogout = useCallback(() => {
-    Alert.alert(
-      'Log out?',
-      'Are you sure you want to log out of the administrator account?',
-      [
-        {
-          text: 'Cancel',
-          style: 'cancel',
-        },
-        {
-          text: 'Log out',
-          style: 'destructive',
-          onPress: () => {
-            void logout();
-          },
-        },
-      ],
-    );
-  }, [logout]);
 
   const loadStats = useCallback(async (showFullLoader = false) => {
     if (showFullLoader) {
@@ -159,14 +135,6 @@ export function AdminHomeScreen({ navigation }: Props) {
             Monitor users, donations, requests and deliveries.
           </Text>
         </View>
-
-        <Pressable
-          accessibilityRole="button"
-          onPress={handleLogout}
-          style={({ pressed }) => [styles.logoutButton, pressed && styles.buttonPressed]}
-        >
-          <Text style={styles.logoutButtonText}>Log out</Text>
-        </Pressable>
       </View>
 
       {errorMessage ? (
@@ -414,22 +382,6 @@ const styles = StyleSheet.create({
     color: colours.textSecondary,
   },
 
-  logoutButton: {
-    minHeight: 38,
-    paddingHorizontal: spacing.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: layout.borderWidth,
-    borderColor: colours.critical,
-    borderRadius: layout.radius,
-    backgroundColor: colours.background,
-  },
-
-  logoutButtonText: {
-    fontSize: fontSize.secondary,
-    fontWeight: fontWeight.semibold,
-    color: colours.critical,
-  },
   errorCard: {
     marginBottom: spacing.lg,
     padding: spacing.md,

@@ -30,7 +30,10 @@ const createStaffSchema = z.object({
   name: z.string().trim().min(2).max(100),
   email: z.string().trim().toLowerCase().email().max(150),
   password: z.string().min(8).max(72),
-  phone: z.string().trim().min(9).max(20),
+  phone: z
+    .string()
+    .trim()
+    .regex(/^\d{10}$/, 'Phone number must contain exactly 10 digits'),
   address: z.string().trim().min(5),
   role: z.enum(['coordinator', 'driver']),
 });
@@ -38,16 +41,24 @@ const createStaffSchema = z.object({
 const updateStaffSchema = z.object({
   name: z.string().trim().min(2).max(100),
   email: z.string().trim().toLowerCase().email().max(150),
-  phone: z.string().trim().min(9).max(20),
+  phone: z
+    .string()
+    .trim()
+    .regex(/^\d{10}$/, 'Phone number must contain exactly 10 digits'),
   address: z.string().trim().min(5),
 });
 
-const createReportSchema = z.object({
-  title: z.string().trim().min(2).max(150),
-  type: z.enum(['overall', 'users', 'donations', 'requests', 'deliveries']),
-  startDate: z.coerce.date(),
-  endDate: z.coerce.date(),
-});
+const createReportSchema = z
+  .object({
+    title: z.string().trim().min(2).max(150),
+    type: z.enum(['overall', 'users', 'donations', 'requests', 'deliveries']),
+    startDate: z.coerce.date(),
+    endDate: z.coerce.date(),
+  })
+  .refine((data) => data.startDate <= data.endDate, {
+    message: 'Start date cannot be after end date',
+    path: ['endDate'],
+  });
 
 const updateReportSchema = z.object({
   title: z.string().trim().min(2).max(150),

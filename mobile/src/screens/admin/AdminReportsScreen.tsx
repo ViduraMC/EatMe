@@ -262,6 +262,15 @@ export function AdminReportsScreen(_props: Props) {
         const nextTitle = value?.trim();
 
         if (!nextTitle || nextTitle.length < 2) {
+          Alert.alert(
+            'Invalid title',
+            'Report title must contain at least 2 characters.',
+          );
+          return;
+        }
+
+        if (nextTitle.length > 150) {
+          Alert.alert('Invalid title', 'Report title cannot exceed 150 characters.');
           return;
         }
 
@@ -551,6 +560,7 @@ export function AdminReportsScreen(_props: Props) {
               placeholder="e.g. August platform summary"
               placeholderTextColor={colours.textSecondary}
               style={styles.input}
+              maxLength={150}
             />
 
             <Text style={styles.inputLabel}>Report type</Text>
