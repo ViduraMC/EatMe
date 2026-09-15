@@ -1,9 +1,4 @@
-import {
-  Prisma,
-  type AssignmentStatus,
-  type ListingStatus,
-  type RequestStatus,
-} from '@prisma/client';
+import { Prisma, type ListingStatus, type RequestStatus } from '@prisma/client';
 import { prisma } from '../config/prisma';
 import { ApiError } from '../utils/apiError';
 import {
@@ -12,6 +7,7 @@ import {
   type ExpiryInput,
   type UrgencyLevel,
 } from './urgency.service';
+import { statusAfterPickupConfirmation } from './assignment.service';
 
 /**
  * Donation and Food Listing business logic. Owner: Vidura.
@@ -511,37 +507,9 @@ async function getDonorAssignment(
   return assignment;
 }
 
-/**
- * Decides what status an assignment should hold after a pickup confirmation.
- *
- * THE RULE, in one place: an assignment becomes in_transit only when BOTH
- * sides have confirmed the pickup. One side alone does not demonstrate the
- * food changed hands, and a handover is only trustworthy if both parties say
- * it happened.
- *
- * Exported so the driver module can apply the identical rule from its own
- * side rather than copying it.
- */
-export function statusAfterPickupConfirmation(assignment: {
-  status: AssignmentStatus;
-  pickupDonorConfirmedAt: Date | null;
-  pickupDriverConfirmedAt: Date | null;
-}): AssignmentStatus {
-  // Terminal states are never recomputed from timestamps.
-  if (
-    assignment.status === 'completed' ||
-    assignment.status === 'declined' ||
-    assignment.status === 'cancelled'
-  ) {
-    return assignment.status;
-  }
-
-  const bothConfirmed =
-    assignment.pickupDonorConfirmedAt !== null &&
-    assignment.pickupDriverConfirmedAt !== null;
-
-  return bothConfirmed ? 'in_transit' : assignment.status;
-}
+// statusAfterPickupConfirmation (the "both sides must confirm" rule) now lives
+// in assignment.service.ts, alongside the driver-side ownership guards, so the
+// donor and driver confirmation flows cannot drift apart. Imported above.
 
 export interface ConfirmPickupInput {
   /** Optional free text written to pickup_notes. */

@@ -15,6 +15,8 @@ import { EmptyState } from '../../components';
 import { getErrorMessage } from '../../api/client';
 import {
   acceptAssignmentRequest,
+  confirmDropoffRequest,
+  confirmPickupRequest,
   declineAssignmentRequest,
   fetchAssignments,
   setAvailabilityRequest,
@@ -33,9 +35,9 @@ import type { DriverAssignment, DriverStats } from '../../types';
  *
  * Sprint 1 shows real data from GET /driver/stats and GET /driver/assignments
  * and writes availability through PATCH /driver/availability. Sprint 2 wires
- * Accept and Decline to PUT /driver/assignments/:id/accept|decline. The
- * pickup/drop-off confirmation buttons are still drawn but inert; that is a
- * later story.
+ * Accept and Decline to PUT /driver/assignments/:id/accept|decline. Sprint 3
+ * (US-DR03) wires the pickup/drop-off confirmation button to
+ * PUT /driver/assignments/:id/confirm-pickup|confirm-dropoff.
  */
 export function DriverDashboardScreen() {
   const { user, updateUser } = useAuth();
@@ -50,6 +52,7 @@ export function DriverDashboardScreen() {
   const [isDeclineModalVisible, setIsDeclineModalVisible] = useState(false);
   const [isDeclining, setIsDeclining] = useState(false);
   const [declineError, setDeclineError] = useState<string | null>(null);
+  const [isConfirming, setIsConfirming] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -160,10 +163,44 @@ export function DriverDashboardScreen() {
     [newAssignment, replaceAssignment],
   );
 
-  // TODO(US-DR03): wire to the pickup/drop-off confirmation flow.
-  const onConfirmDelivery = useCallback(() => {
-    Alert.alert('Coming soon', 'Pickup and drop-off confirmation is not built yet.');
-  }, []);
+  /**
+   * US-DR03: Confirm Pickup and Confirm Drop Off, driver side.
+   *
+   * Which endpoint to call is decided from the assignment's own status
+   * rather than anything local: in_transit means both driver and donor have
+   * already confirmed pickup, so this action is drop off; anything else
+   * still active is pickup. Whether that action button was even reachable
+   * (e.g. still waiting on the donor) is enforced by ActiveDeliveryCard, and
+   * the server enforces it again regardless.
+   */
+  const onConfirmDelivery = useCallback(async () => {
+    if (!activeDelivery) {
+      return;
+    }
+    const isDropoff = activeDelivery.status === 'in_transit';
+    setIsConfirming(true);
+    try {
+      const updated = isDropoff
+        ? await confirmDropoffRequest(activeDelivery.assignmentId)
+        : await confirmPickupRequest(activeDelivery.assignmentId);
+      replaceAssignment(updated);
+
+      if (isDropoff) {
+        Alert.alert('Drop off confirmed', 'This delivery is now complete.');
+      } else {
+        Alert.alert(
+          'Pickup confirmed',
+          updated.status === 'in_transit'
+            ? 'Both you and the donor have confirmed. This delivery is now in transit.'
+            : 'Your confirmation is recorded. This delivery moves to in transit once the donor confirms as well.',
+        );
+      }
+    } catch (caught) {
+      Alert.alert('Could not confirm', getErrorMessage(caught));
+    } finally {
+      setIsConfirming(false);
+    }
+  }, [activeDelivery, replaceAssignment]);
 
   if (isLoading) {
     return (
@@ -230,7 +267,11 @@ export function DriverDashboardScreen() {
 
         <Text style={styles.sectionHeading}>Active delivery</Text>
         {activeDelivery ? (
-          <ActiveDeliveryCard assignment={activeDelivery} onConfirm={onConfirmDelivery} />
+          <ActiveDeliveryCard
+            assignment={activeDelivery}
+            onConfirm={() => void onConfirmDelivery()}
+            isConfirming={isConfirming}
+          />
         ) : (
           <EmptyState
             title="No active delivery"

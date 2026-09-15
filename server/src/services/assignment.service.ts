@@ -3,6 +3,7 @@ import { prisma } from '../config/prisma';
 import { ApiError } from '../utils/apiError';
 import { quantityAfterAcceptance } from './urgency.service';
 import { evaluateUrgency } from './urgency.service';
+import { driverAssignmentSelect, type DriverAssignment } from '../types/driver';
 
 /**
  * Delivery-assignment rules shared across modules.
@@ -19,6 +20,9 @@ const OWNED_ASSIGNMENT_SELECT = {
   driverId: true,
   coordinatorId: true,
   status: true,
+  pickupDonorConfirmedAt: true,
+  pickupDriverConfirmedAt: true,
+  dropoffDriverConfirmedAt: true,
 } satisfies Record<string, true>;
 
 type OwnedAssignment = {
@@ -26,6 +30,9 @@ type OwnedAssignment = {
   driverId: number;
   coordinatorId: number;
   status: AssignmentStatus;
+  pickupDonorConfirmedAt: Date | null;
+  pickupDriverConfirmedAt: Date | null;
+  dropoffDriverConfirmedAt: Date | null;
 };
 
 /**
@@ -60,6 +67,160 @@ export function assertAwaitingDriverResponse(
       `This assignment is already ${assignment.status.replace(/_/g, ' ')} and can no longer be accepted or declined`,
     );
   }
+}
+
+/**
+ * Decides what status an assignment should hold after a pickup confirmation.
+ *
+ * THE RULE, in one place: an assignment becomes in_transit only when BOTH
+ * sides have confirmed the pickup (US-D03 donor side, US-DR03 driver side).
+ * One side alone does not demonstrate the food changed hands, and a handover
+ * is only trustworthy if both parties say it happened.
+ *
+ * Lives here, not in donation.service.ts, so the donor and driver
+ * confirmation flows both call the same rule instead of each keeping their
+ * own copy of it.
+ */
+export function statusAfterPickupConfirmation(assignment: {
+  status: AssignmentStatus;
+  pickupDonorConfirmedAt: Date | null;
+  pickupDriverConfirmedAt: Date | null;
+}): AssignmentStatus {
+  // Terminal states are never recomputed from timestamps.
+  if (
+    assignment.status === 'completed' ||
+    assignment.status === 'declined' ||
+    assignment.status === 'cancelled'
+  ) {
+    return assignment.status;
+  }
+
+  const bothConfirmed =
+    assignment.pickupDonorConfirmedAt !== null &&
+    assignment.pickupDriverConfirmedAt !== null;
+
+  return bothConfirmed ? 'in_transit' : assignment.status;
+}
+
+export interface ConfirmPickupInput {
+  /** Optional free text written to pickup_notes. */
+  notes?: string | null;
+}
+
+/**
+ * US-DR03: The driver confirms the food has been handed over at pickup.
+ *
+ * Writes pickup_driver_confirmed_at and, when the donor has already
+ * confirmed (US-D03, donation.service.ts confirmPickupAsDonor), moves the
+ * assignment to in_transit via statusAfterPickupConfirmation. Until both
+ * sides have confirmed, the assignment stays accepted.
+ *
+ * The timestamp and the status change go in one update for the same reason
+ * as the donor side: a timestamp written without the matching status change
+ * would leave a delivery both parties confirmed that never left "accepted".
+ */
+export async function confirmPickupAsDriver(
+  assignmentId: number,
+  driverId: number,
+  input: ConfirmPickupInput = {},
+): Promise<DriverAssignment> {
+  const existing = await getOwnAssignmentOrThrow(assignmentId, driverId);
+
+  // Reject rather than silently overwriting. The first timestamp records when
+  // the handover actually happened; overwriting it destroys that evidence.
+  if (existing.pickupDriverConfirmedAt) {
+    throw ApiError.badRequest(
+      'You have already confirmed this pickup. It cannot be confirmed twice.',
+    );
+  }
+
+  if (existing.status === 'declined' || existing.status === 'cancelled') {
+    throw ApiError.badRequest(
+      'This delivery is no longer active, so there is nothing to confirm',
+    );
+  }
+  if (existing.status === 'completed') {
+    throw ApiError.badRequest('This delivery is already complete');
+  }
+  if (existing.status === 'pending_driver') {
+    throw ApiError.badRequest('Accept this assignment before confirming pickup');
+  }
+
+  const confirmedAt = new Date();
+  const nextStatus = statusAfterPickupConfirmation({
+    status: existing.status,
+    pickupDonorConfirmedAt: existing.pickupDonorConfirmedAt,
+    pickupDriverConfirmedAt: confirmedAt,
+  });
+
+  return prisma.deliveryAssignment.update({
+    where: { assignmentId },
+    data: {
+      pickupDriverConfirmedAt: confirmedAt,
+      status: nextStatus,
+      ...(input.notes ? { pickupNotes: input.notes } : {}),
+    },
+    select: driverAssignmentSelect,
+  });
+}
+
+export interface ConfirmDropoffInput {
+  /** Optional free text written to dropoff_notes. */
+  notes?: string | null;
+}
+
+/**
+ * US-DR03: The driver confirms the food has been handed to the recipient.
+ *
+ * Only valid once the assignment is in_transit, i.e. both driver and donor
+ * have already confirmed pickup — an assignment still sitting in accepted
+ * means pickup was never fully confirmed, so there is nothing to drop off
+ * yet.
+ *
+ * Writes dropoff_driver_confirmed_at and completed_at together and moves the
+ * assignment straight to completed. dropoff_recipient_confirmed_at stays
+ * reserved on the schema for a future recipient-side confirmation ticket;
+ * this one only covers the driver's side of drop off.
+ */
+export async function confirmDropoffAsDriver(
+  assignmentId: number,
+  driverId: number,
+  input: ConfirmDropoffInput = {},
+): Promise<DriverAssignment> {
+  const existing = await getOwnAssignmentOrThrow(assignmentId, driverId);
+
+  if (existing.dropoffDriverConfirmedAt) {
+    throw ApiError.badRequest(
+      'You have already confirmed this drop off. It cannot be confirmed twice.',
+    );
+  }
+
+  if (existing.status === 'declined' || existing.status === 'cancelled') {
+    throw ApiError.badRequest(
+      'This delivery is no longer active, so there is nothing to confirm',
+    );
+  }
+  if (existing.status === 'completed') {
+    throw ApiError.badRequest('This delivery is already complete');
+  }
+  if (existing.status !== 'in_transit') {
+    throw ApiError.badRequest(
+      'Pickup must be confirmed by both the driver and the donor before drop off can be confirmed',
+    );
+  }
+
+  const confirmedAt = new Date();
+
+  return prisma.deliveryAssignment.update({
+    where: { assignmentId },
+    data: {
+      dropoffDriverConfirmedAt: confirmedAt,
+      completedAt: confirmedAt,
+      status: 'completed',
+      ...(input.notes ? { dropoffNotes: input.notes } : {}),
+    },
+    select: driverAssignmentSelect,
+  });
 }
 
 /**
