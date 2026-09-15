@@ -409,7 +409,7 @@ export function AdminUsersScreen() {
     setStaffFormError(null);
 
     const name = staffForm.name.trim();
-    const email = staffForm.email.trim();
+    const email = staffForm.email.trim().toLowerCase();
     const phone = staffForm.phone.trim();
     const address = staffForm.address.trim();
 
@@ -418,8 +418,15 @@ export function AdminUsersScreen() {
       return;
     }
 
-    if (!email.includes('@')) {
+    const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+    if (!emailPattern.test(email)) {
       setStaffFormError('Enter a valid email address.');
+      return;
+    }
+
+    if (!/^\d{10}$/.test(phone)) {
+      setStaffFormError('Phone number must contain exactly 10 digits.');
       return;
     }
 
@@ -960,6 +967,7 @@ export function AdminUsersScreen() {
                 placeholder="Full name"
                 placeholderTextColor={colours.textSecondary}
                 style={styles.formInput}
+                maxLength={80}
               />
 
               <Text style={styles.formLabel}>Email</Text>
@@ -982,16 +990,19 @@ export function AdminUsersScreen() {
               <Text style={styles.formLabel}>Phone</Text>
               <TextInput
                 value={staffForm.phone}
-                onChangeText={(value) =>
+                onChangeText={(value) => {
+                  const digitsOnly = value.replace(/\D/g, '').slice(0, 10);
+
                   setStaffForm((current) => ({
                     ...current,
-                    phone: value,
-                  }))
-                }
+                    phone: digitsOnly,
+                  }));
+                }}
                 placeholder="0771234567"
                 placeholderTextColor={colours.textSecondary}
                 style={styles.formInput}
                 keyboardType="phone-pad"
+                maxLength={10}
               />
 
               <Text style={styles.formLabel}>Address</Text>
@@ -1007,6 +1018,7 @@ export function AdminUsersScreen() {
                 placeholderTextColor={colours.textSecondary}
                 style={[styles.formInput, styles.addressInput]}
                 multiline
+                maxLength={200}
               />
 
               {!editingStaff ? (

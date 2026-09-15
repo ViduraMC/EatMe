@@ -1,5 +1,5 @@
-import React from 'react';
-import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import React, { useState } from 'react';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
@@ -32,6 +32,8 @@ import { AdminListingsScreen } from '../screens/admin/AdminListingsScreen';
 import { AdminRequestsScreen } from '../screens/admin/AdminRequestsScreen';
 import { AdminAssignmentsScreen } from '../screens/admin/AdminAssignmentsScreen';
 import { AdminUsersScreen } from '../screens/admin/AdminUsersScreen';
+import { AdminReportsScreen } from '../screens/admin/AdminReportsScreen';
+import { AdminMenu } from '../components/admin/AdminMenu';
 
 import type {
   AdminStackParamList,
@@ -228,40 +230,77 @@ function DriverNavigator() {
 }
 
 /** Naily adds admin screens here. */
-/** Naily adds admin screens here. */
 function AdminNavigator() {
+  const [menuNavigation, setMenuNavigation] = useState<any>(null);
   return (
-    <AdminStack.Navigator screenOptions={screenOptions}>
-      <AdminStack.Screen
-        name="AdminHome"
-        component={AdminHomeScreen}
-        options={{ title: 'Administration' }}
-      />
+    <>
+      <AdminStack.Navigator
+        screenOptions={({ navigation }) => ({
+          ...screenOptions,
+          headerLeft: () => (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Open admin menu"
+              onPress={() => {
+                setMenuNavigation(navigation);
+              }}
+              style={({ pressed }) => [
+                styles.adminMenuButton,
+                pressed && styles.adminMenuButtonPressed,
+              ]}
+            >
+              <Text style={styles.adminMenuIcon}>☰</Text>
+            </Pressable>
+          ),
+        })}
+      >
+        <AdminStack.Screen
+          name="AdminHome"
+          component={AdminHomeScreen}
+          options={{ title: 'Administration' }}
+        />
 
-      <AdminStack.Screen
-        name="AdminListings"
-        component={AdminListingsScreen}
-        options={{ title: 'Donation Listings' }}
-      />
+        <AdminStack.Screen
+          name="AdminListings"
+          component={AdminListingsScreen}
+          options={{ title: 'Donation Listings' }}
+        />
 
-      <AdminStack.Screen
-        name="AdminRequests"
-        component={AdminRequestsScreen}
-        options={{ title: 'Donation Requests' }}
-      />
+        <AdminStack.Screen
+          name="AdminRequests"
+          component={AdminRequestsScreen}
+          options={{ title: 'Donation Requests' }}
+        />
 
-      <AdminStack.Screen
-        name="AdminAssignments"
-        component={AdminAssignmentsScreen}
-        options={{ title: 'Delivery Assignments' }}
-      />
+        <AdminStack.Screen
+          name="AdminAssignments"
+          component={AdminAssignmentsScreen}
+          options={{ title: 'Delivery Assignments' }}
+        />
 
-      <AdminStack.Screen
-        name="AdminUsers"
-        component={AdminUsersScreen}
-        options={{ title: 'Users' }}
-      />
-    </AdminStack.Navigator>
+        <AdminStack.Screen
+          name="AdminUsers"
+          component={AdminUsersScreen}
+          options={{ title: 'Users' }}
+        />
+
+        <AdminStack.Screen
+          name="AdminReports"
+          component={AdminReportsScreen}
+          options={{ title: 'Reports' }}
+        />
+      </AdminStack.Navigator>
+
+      {menuNavigation ? (
+        <AdminMenu
+          visible
+          navigation={menuNavigation}
+          onClose={() => {
+            setMenuNavigation(null);
+          }}
+        />
+      ) : null}
+    </>
   );
 }
 
@@ -305,5 +344,22 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: colours.background,
+  },
+
+  adminMenuButton: {
+    width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  adminMenuButtonPressed: {
+    opacity: 0.5,
+  },
+
+  adminMenuIcon: {
+    color: colours.textPrimary,
+    fontSize: 24,
+    lineHeight: 28,
   },
 });
