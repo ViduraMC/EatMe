@@ -51,6 +51,7 @@ export { Avatar } from './Avatar';
 export { ListRow } from './ListRow';
 export { InfoBanner } from './InfoBanner';
 export { Timeline, type TimelineStep, type StepState } from './Timeline';
+export { HandshakePanel, type HandshakeSide } from './HandshakePanel';
 
 // Feedback
 export { Skeleton, SkeletonCard, SkeletonList } from './Skeleton';

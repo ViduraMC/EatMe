@@ -1,93 +1,88 @@
 import React, { useCallback, useState } from 'react';
-import {
-  ActivityIndicator,
-  Alert,
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import { Linking, RefreshControl, View } from 'react-native';
+import Animated from 'react-native-reanimated';
 import { useFocusEffect } from '@react-navigation/native';
-import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-
 import {
-  Button,
+  AppText,
+  Avatar,
+  Badge,
   Card,
+  Checkbox,
   EmptyState,
-  Input,
-  ScreenContainer,
-  StatusPill,
+  ErrorState,
+  HandshakePanel,
+  Icon,
+  IconButton,
+  InfoBanner,
+  LargeTitle,
+  Screen,
+  SkeletonList,
+  SlideToConfirm,
+  TextField,
+  Timeline,
+  TopBar,
+  useScrollY,
+  useToast,
+  type TimelineStep,
 } from '../../components';
 import { confirmPickup, fetchPendingConfirmations } from '../../api/donations.api';
-import { getErrorMessage } from '../../api/client';
-import { colours, fontSize, fontWeight, layout, spacing } from '../../constants/theme';
-import { formatDateTime, formatStatus } from '../../utils/datetime';
+import { useAuth } from '../../context/AuthContext';
+import { useI18n } from '../../i18n';
+import { describeError } from '../../i18n/errors';
+import { useFormat } from '../../i18n/format';
+import { makeStyles, useTheme } from '../../theme';
+import { enterListItem, useReducedMotion } from '../../theme/animations';
 import type { DonorAssignment } from '../../types/assignment';
-import type { DonorStackParamList } from '../../navigation/types';
-
-type Props = NativeStackScreenProps<DonorStackParamList, 'ConfirmPickup'>;
-
-/**
- * One side of the dual confirmation panel.
- *
- * A handover is only trustworthy if both parties say it happened, so both
- * rows are always visible: the donor can see they are waiting on the driver,
- * or that the driver is waiting on them.
- */
-function ConfirmationRow({
-  who,
-  confirmedAt,
-}: {
-  who: string;
-  confirmedAt: string | null;
-}) {
-  const done = !!confirmedAt;
-  return (
-    <View style={styles.confirmRow}>
-      <View style={[styles.dot, done ? styles.dotDone : styles.dotPending]}>
-        <Text style={styles.dotText}>{done ? '✓' : '·'}</Text>
-      </View>
-      <View style={styles.confirmText}>
-        <Text style={styles.confirmWho}>{who}</Text>
-        <Text style={[styles.confirmState, done && styles.confirmStateDone]}>
-          {done ? `Confirmed ${formatDateTime(confirmedAt)}` : 'Not confirmed yet'}
-        </Text>
-      </View>
-    </View>
-  );
-}
+import { assignmentTone } from '../../utils/status';
+import type { DonorTabProps } from '../../navigation/types';
+import { setPendingPickups } from './pickupBadge';
 
 /**
- * Confirm Pickup, donor side. Figma frame "06 Pickup Confirmation".
+ * The donor's handovers: confirm the driver has collected the food.
  *
- * Since the coordinator now handles approval, this is the donor's only
- * remaining active step after posting a listing.
- *
- * If the screen is opened without an assignmentId it lists everything waiting
- * on this donor, so it works both as a destination from My Listings and as a
- * direct link to one delivery.
+ * Since the coordinator approves requests, this is the donor's only step
+ * after posting. Each handover shows the whole picture (who is coming, where
+ * the food is going, what they are taking) and asks the donor to tick off
+ * each item as it leaves, then slide to confirm. Ticking first turns
+ * "confirm" from a reflex into a quick, real check, and sliding makes an
+ * accidental confirmation practically impossible.
  */
-export function ConfirmPickupScreen({ navigation, route }: Props) {
+export function ConfirmPickupScreen({ route }: DonorTabProps<'ConfirmPickup'>) {
+  const theme = useTheme();
+  const styles = useStyles();
+  const { t } = useI18n();
+  const reduced = useReducedMotion();
+  const { scrollY, onScroll } = useScrollY();
   const focusedId = route.params?.assignmentId;
 
   const [assignments, setAssignments] = useState<DonorAssignment[]>([]);
   const [loading, setLoading] = useState(true);
-  const [submittingId, setSubmittingId] = useState<number | null>(null);
-  const [notes, setNotes] = useState<Record<number, string>>({});
-  const [checked, setChecked] = useState<Record<string, boolean>>({});
-  const [error, setError] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<unknown>(null);
 
-  const load = useCallback(async () => {
-    setError(null);
-    try {
-      const rows = await fetchPendingConfirmations();
-      setAssignments(focusedId ? rows.filter((a) => a.assignmentId === focusedId) : rows);
-    } catch (err) {
-      setError(getErrorMessage(err));
-    } finally {
-      setLoading(false);
-    }
-  }, [focusedId]);
+  const load = useCallback(
+    async (isRefresh = false) => {
+      if (isRefresh) setRefreshing(true);
+      try {
+        const rows = await fetchPendingConfirmations();
+        setPendingPickups(rows.filter((a) => !a.pickupDonorConfirmedAt).length);
+        // A focused assignment goes first rather than hiding the others.
+        const sorted = focusedId
+          ? [...rows].sort((a, b) =>
+              a.assignmentId === focusedId ? -1 : b.assignmentId === focusedId ? 1 : 0,
+            )
+          : rows;
+        setAssignments(sorted);
+        setError(null);
+      } catch (err) {
+        setError(err);
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
+      }
+    },
+    [focusedId],
+  );
 
   useFocusEffect(
     useCallback(() => {
@@ -95,291 +90,315 @@ export function ConfirmPickupScreen({ navigation, route }: Props) {
     }, [load]),
   );
 
-  async function handleConfirm(assignment: DonorAssignment) {
-    setSubmittingId(assignment.assignmentId);
-    setError(null);
-    try {
-      const updated = await confirmPickup(assignment.assignmentId, {
-        notes: notes[assignment.assignmentId]?.trim() || null,
-      });
-
-      /*
-       * Report what the server actually decided rather than assuming. The
-       * assignment only moves to in_transit once the driver has confirmed
-       * too, and that call is made server side.
-       */
-      Alert.alert(
-        'Pickup confirmed',
-        updated.status === 'in_transit'
-          ? 'Both you and the driver have confirmed. This delivery is now in transit.'
-          : 'Your confirmation is recorded. The delivery moves to in transit once the driver confirms as well.',
-      );
-
-      await load();
-    } catch (err) {
-      setError(getErrorMessage(err));
-    } finally {
-      setSubmittingId(null);
-    }
-  }
-
-  if (loading) {
-    return (
-      <ScreenContainer>
-        <View style={styles.centre}>
-          <ActivityIndicator size="large" color={colours.accent} />
-        </View>
-      </ScreenContainer>
+  let empty: React.ReactElement;
+  if (loading) empty = <SkeletonList count={2} />;
+  else if (error) empty = <ErrorState error={error} onRetry={() => void load()} />;
+  else
+    empty = (
+      <EmptyState
+        illustration="deliverFood"
+        title={t('donor.pickupsEmptyTitle')}
+        message={t('donor.pickupsEmptyBody')}
+      />
     );
-  }
-
-  if (assignments.length === 0) {
-    return (
-      <ScreenContainer>
-        <EmptyState
-          title="Nothing to confirm"
-          message="When a driver is assigned to collect one of your listings, it appears here for you to confirm the handover."
-          actionLabel="Back to my listings"
-          onAction={() => navigation.navigate('MyListings')}
-        />
-      </ScreenContainer>
-    );
-  }
 
   return (
-    <ScreenContainer scroll avoidKeyboard>
-      <Text style={styles.heading}>Confirm pickup</Text>
-      <Text style={styles.subtitle}>
-        Confirm once the driver has collected the food from you.
-      </Text>
-
-      {!!error && <Text style={styles.error}>{error}</Text>}
-
-      {assignments.map((assignment) => {
-        const alreadyConfirmed = !!assignment.pickupDonorConfirmedAt;
-        const listing = assignment.request.listing;
-
-        return (
-          <View key={assignment.assignmentId} style={styles.assignment}>
-            {/* Assignment summary */}
-            <Card style={styles.card}>
-              <View style={styles.cardTop}>
-                <Text style={styles.listingTitle} numberOfLines={1}>
-                  {listing.title}
-                </Text>
-                <StatusPill label={formatStatus(assignment.status)} tone="neutral" />
-              </View>
-              <Text style={styles.meta}>Delivery #{assignment.assignmentId}</Text>
-              <Text style={styles.meta}>
-                Driver {assignment.driver.name} · {assignment.driver.phone}
-              </Text>
-              <Text style={styles.meta}>
-                For{' '}
-                {assignment.request.recipient.organisationName ??
-                  assignment.request.recipient.name}
-              </Text>
-              <Text style={styles.meta}>Collect from {listing.pickupAddress}</Text>
-              <Text style={styles.meta}>
-                {formatDateTime(listing.pickupWindowStart)} to{' '}
-                {formatDateTime(listing.pickupWindowEnd)}
-              </Text>
-              {!!assignment.noteToDriver && (
-                <Text style={styles.note}>Note: {assignment.noteToDriver}</Text>
-              )}
-            </Card>
-
-            {/* Dual confirmation panel */}
-            <Card style={styles.card}>
-              <Text style={styles.cardHeading}>Both parties must confirm</Text>
-              <ConfirmationRow
-                who="You, the donor"
-                confirmedAt={assignment.pickupDonorConfirmedAt}
-              />
-              <ConfirmationRow
-                who={assignment.driver.name}
-                confirmedAt={assignment.pickupDriverConfirmedAt}
-              />
-            </Card>
-
-            {/* Item checklist */}
-            <Card style={styles.card}>
-              <Text style={styles.cardHeading}>Item checklist</Text>
-              {assignment.request.items.map((requested) => {
-                const key = `${assignment.assignmentId}:${requested.requestItemId}`;
-                const isChecked = !!checked[key];
-                return (
-                  <Pressable
-                    key={requested.requestItemId}
-                    onPress={() => setChecked((c) => ({ ...c, [key]: !isChecked }))}
-                    accessibilityRole="checkbox"
-                    accessibilityState={{ checked: isChecked }}
-                    style={styles.checkRow}
-                  >
-                    <View style={[styles.checkbox, isChecked && styles.checkboxOn]}>
-                      {isChecked && <Text style={styles.checkMark}>✓</Text>}
-                    </View>
-                    <Text style={styles.checkLabel}>
-                      {requested.quantityRequested} {requested.item.unit}{' '}
-                      {requested.item.foodName}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-              <Text style={styles.checklistHint}>
-                The checklist is for your own use while handing over. It is not sent to
-                the server.
-              </Text>
-            </Card>
-
-            {!alreadyConfirmed && (
-              <Input
-                label="Notes (optional)"
-                value={notes[assignment.assignmentId] ?? ''}
-                onChangeText={(text) =>
-                  setNotes((n) => ({ ...n, [assignment.assignmentId]: text }))
-                }
-                placeholder="Anything the coordinator should know"
-                multiline
-              />
-            )}
-
-            {!!assignment.pickupNotes && (
-              <Text style={styles.savedNote}>Saved note: {assignment.pickupNotes}</Text>
-            )}
-
-            <Button
-              label={alreadyConfirmed ? 'You have confirmed' : 'Confirm Pickup'}
-              onPress={() => void handleConfirm(assignment)}
-              disabled={alreadyConfirmed}
-              loading={submittingId === assignment.assignmentId}
-            />
-
-            {alreadyConfirmed && !assignment.pickupDriverConfirmedAt && (
-              <Text style={styles.waiting}>
-                Waiting for {assignment.driver.name} to confirm before this delivery moves
-                to in transit.
-              </Text>
-            )}
-          </View>
-        );
-      })}
-    </ScreenContainer>
+    <Screen>
+      <TopBar title={t('donor.pickupsTitle')} scrollY={scrollY} />
+      <Animated.FlatList
+        data={loading || error ? [] : assignments}
+        keyExtractor={(a) => String(a.assignmentId)}
+        onScroll={onScroll}
+        scrollEventThrottle={16}
+        keyboardShouldPersistTaps="handled"
+        ListHeaderComponent={
+          <LargeTitle
+            title={t('donor.pickupsTitle')}
+            subtitle={t('donor.pickupsSubtitle')}
+            scrollY={scrollY}
+          />
+        }
+        ListEmptyComponent={empty}
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => void load(true)}
+            tintColor={theme.colors.brand}
+            colors={[theme.colors.brand]}
+          />
+        }
+        renderItem={({ item, index }) => (
+          <Animated.View entering={enterListItem(index, reduced)}>
+            <HandoverCard assignment={item} onConfirmed={() => void load()} />
+          </Animated.View>
+        )}
+      />
+    </Screen>
   );
 }
 
-const styles = StyleSheet.create({
-  centre: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  heading: {
-    fontSize: fontSize.title,
-    fontWeight: fontWeight.bold,
-    color: colours.textPrimary,
+function HandoverCard({
+  assignment,
+  onConfirmed,
+}: {
+  assignment: DonorAssignment;
+  onConfirmed: () => void;
+}) {
+  const styles = useStyles();
+  const { t } = useI18n();
+  const f = useFormat();
+  const toast = useToast();
+  const { user } = useAuth();
+  const { request, driver } = assignment;
+  const listing = request.listing;
+  const recipient = request.recipient.organisationName ?? request.recipient.name;
+  const youConfirmed = !!assignment.pickupDonorConfirmedAt;
+
+  const [checked, setChecked] = useState<Record<number, boolean>>({});
+  const [notes, setNotes] = useState('');
+  const allChecked = request.items.every((i) => checked[i.requestItemId]);
+
+  const steps: TimelineStep[] = [
+    { key: 'listed', title: t('donor.stepListed'), state: 'done' },
+    { key: 'approved', title: t('donor.stepApproved'), state: 'done' },
+    {
+      key: 'driver',
+      title: t('donor.stepDriver'),
+      state:
+        assignment.status === 'in_transit' || assignment.status === 'completed'
+          ? 'done'
+          : 'current',
+    },
+    {
+      key: 'pickup',
+      title: t('donor.stepPickedUp'),
+      state:
+        assignment.status === 'in_transit' || assignment.status === 'completed'
+          ? 'done'
+          : 'upcoming',
+    },
+    {
+      key: 'delivered',
+      title: t('donor.stepDelivered'),
+      state: assignment.status === 'completed' ? 'done' : 'upcoming',
+    },
+  ];
+
+  async function confirm() {
+    try {
+      const updated = await confirmPickup(assignment.assignmentId, {
+        notes: notes.trim() || null,
+      });
+      toast.show({
+        type: 'success',
+        title: t('donor.pickupConfirmed'),
+        message:
+          updated.status === 'in_transit'
+            ? t('donor.confirmedBoth')
+            : t('donor.confirmedYou'),
+      });
+      // Let the slider's "confirmed" state show for a moment before reloading.
+      setTimeout(onConfirmed, 1200);
+    } catch (err) {
+      toast.show({ type: 'error', title: describeError(err, t).message });
+      throw err;
+    }
+  }
+
+  return (
+    <Card>
+      <View style={styles.head}>
+        <View style={styles.flex}>
+          <AppText variant="caption" color="textSecondary">
+            {t('donor.deliveryNo', { id: assignment.assignmentId })}
+          </AppText>
+          <AppText variant="subtitle" numberOfLines={2}>
+            {listing.title}
+          </AppText>
+        </View>
+        <Badge
+          label={f.status('assignment', assignment.status)}
+          tone={assignmentTone[assignment.status]}
+          dot
+          size="sm"
+        />
+      </View>
+
+      <Timeline steps={steps} orientation="horizontal" style={styles.timeline} />
+
+      <View style={styles.driverRow}>
+        <Avatar name={driver.name} size={44} icon="mc:truck-delivery-outline" />
+        <View style={styles.flex}>
+          <AppText variant="caption" color="textSecondary">
+            {t('donor.driver')}
+          </AppText>
+          <AppText variant="bodyStrong">{driver.name}</AppText>
+          <AppText variant="caption" color="textSecondary">
+            {driver.phone}
+          </AppText>
+        </View>
+        <IconButton
+          icon="call"
+          variant="filled"
+          tone="olive"
+          onPress={() => void Linking.openURL(`tel:${driver.phone.replace(/\s/g, '')}`)}
+          accessibilityLabel={t('donor.callDriver', { name: driver.name })}
+        />
+      </View>
+
+      <View style={styles.facts}>
+        <Fact icon="mc:home-heart" label={t('donor.goingTo')} value={recipient} />
+        <Fact
+          icon="location-outline"
+          label={t('donor.collectFrom')}
+          value={listing.pickupAddress}
+        />
+        <Fact
+          icon="time-outline"
+          label={t('donor.windowTitle')}
+          value={f.window(listing.pickupWindowStart, listing.pickupWindowEnd)}
+        />
+      </View>
+
+      {assignment.noteToDriver ? (
+        <InfoBanner
+          tone="neutral"
+          icon="chatbox-ellipses-outline"
+          title={t('donor.noteFromCoordinator')}
+          message={assignment.noteToDriver}
+        />
+      ) : null}
+
+      <HandshakePanel
+        title={t('donor.bothConfirm')}
+        waitingLabel={t('donor.waiting')}
+        left={{
+          label: t('donor.you'),
+          name: user?.organisationName ?? user?.name ?? listing.title,
+          confirmedAt: assignment.pickupDonorConfirmedAt,
+          confirmedText: assignment.pickupDonorConfirmedAt
+            ? t('donor.confirmedAt', { when: f.time(assignment.pickupDonorConfirmedAt) })
+            : undefined,
+        }}
+        right={{
+          label: driver.name.split(' ')[0] ?? driver.name,
+          name: driver.name,
+          confirmedAt: assignment.pickupDriverConfirmedAt,
+          confirmedText: assignment.pickupDriverConfirmedAt
+            ? t('donor.confirmedAt', { when: f.time(assignment.pickupDriverConfirmedAt) })
+            : undefined,
+        }}
+      />
+
+      {youConfirmed ? (
+        <InfoBanner
+          tone="safe"
+          icon="checkmark-circle"
+          message={t('donor.alreadyConfirmed')}
+        />
+      ) : (
+        <>
+          <AppText variant="secondaryStrong">{t('donor.checklist')}</AppText>
+          <AppText variant="caption" color="textSecondary" style={styles.hint}>
+            {t('donor.checklistHint')}
+          </AppText>
+          {request.items.map((line) => (
+            <Checkbox
+              key={line.requestItemId}
+              checked={!!checked[line.requestItemId]}
+              onChange={(v) => setChecked((c) => ({ ...c, [line.requestItemId]: v }))}
+              label={line.item.foodName}
+              trailing={
+                <AppText variant="secondaryStrong" color="textSecondary">
+                  {f.quantity(line.quantityRequested, line.item.unit)}
+                </AppText>
+              }
+            />
+          ))}
+
+          <TextField
+            label={t('donor.handoverNotes')}
+            optional
+            value={notes}
+            onChangeText={setNotes}
+            placeholder={t('donor.handoverPlaceholder')}
+            multiline
+            maxLength={500}
+            containerStyle={styles.notes}
+          />
+
+          <SlideToConfirm
+            label={t('donor.slideToConfirm')}
+            doneLabel={t('donor.pickupConfirmed')}
+            onConfirm={confirm}
+            disabled={!allChecked}
+          />
+          {!allChecked ? (
+            <View style={styles.lockHint}>
+              <Icon name="lock-closed-outline" size={14} color="textSecondary" />
+              <AppText variant="caption" color="textSecondary">
+                {t('donor.checkAllFirst')}
+              </AppText>
+            </View>
+          ) : null}
+        </>
+      )}
+    </Card>
+  );
+}
+
+function Fact({
+  icon,
+  label,
+  value,
+}: {
+  icon: React.ComponentProps<typeof Icon>['name'];
+  label: string;
+  value: string;
+}) {
+  const styles = useStyles();
+  return (
+    <View style={styles.fact}>
+      <Icon name={icon} size={18} color="brandText" />
+      <View style={styles.flex}>
+        <AppText variant="caption" color="textSecondary">
+          {label}
+        </AppText>
+        <AppText variant="secondaryStrong">{value}</AppText>
+      </View>
+    </View>
+  );
+}
+
+const useStyles = makeStyles((t) => ({
+  content: {
+    paddingHorizontal: t.layout.screenPadding,
+    paddingBottom: t.spacing.xxl,
+    flexGrow: 1,
   },
-  subtitle: {
-    fontSize: fontSize.secondary,
-    color: colours.textSecondary,
-    marginTop: spacing.xs,
-    marginBottom: spacing.lg,
-  },
-  assignment: { marginBottom: spacing.xl },
-  card: { marginBottom: spacing.md },
-  cardTop: {
+  flex: { flex: 1 },
+  head: { flexDirection: 'row', alignItems: 'flex-start', gap: t.spacing.sm },
+  timeline: { marginVertical: t.spacing.md },
+  driverRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacing.sm,
-    marginBottom: spacing.xs,
+    gap: t.spacing.sm + 4,
+    padding: t.spacing.sm + 4,
+    borderRadius: t.radius.md,
+    backgroundColor: t.colors.oliveSoft,
+    marginBottom: t.spacing.md,
   },
-  listingTitle: {
-    fontSize: fontSize.body,
-    fontWeight: fontWeight.semibold,
-    color: colours.textPrimary,
-    flexShrink: 1,
-  },
-  cardHeading: {
-    fontSize: fontSize.label,
-    fontWeight: fontWeight.semibold,
-    color: colours.textSecondary,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginBottom: spacing.sm,
-  },
-  meta: { fontSize: fontSize.secondary, color: colours.textSecondary, lineHeight: 20 },
-  note: {
-    fontSize: fontSize.secondary,
-    color: colours.textPrimary,
-    marginTop: spacing.xs,
-    lineHeight: 20,
-  },
-  confirmRow: {
+  facts: { gap: t.spacing.sm + 4, marginBottom: t.spacing.md },
+  fact: { flexDirection: 'row', gap: t.spacing.sm + 4, alignItems: 'flex-start' },
+  hint: { marginBottom: t.spacing.xs },
+  notes: { marginTop: t.spacing.sm },
+  lockHint: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    paddingVertical: spacing.sm,
-  },
-  dot: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
+    gap: t.spacing.xs,
+    marginTop: t.spacing.sm,
   },
-  dotDone: { backgroundColor: colours.accent },
-  dotPending: {
-    backgroundColor: colours.surface,
-    borderWidth: layout.borderWidth,
-    borderColor: colours.border,
-  },
-  dotText: { color: colours.textInverse, fontWeight: fontWeight.bold },
-  confirmText: { flexShrink: 1 },
-  confirmWho: {
-    fontSize: fontSize.secondary,
-    fontWeight: fontWeight.medium,
-    color: colours.textPrimary,
-  },
-  confirmState: { fontSize: fontSize.label, color: colours.textSecondary },
-  confirmStateDone: { color: colours.accent },
-  checkRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    paddingVertical: spacing.sm,
-  },
-  checkbox: {
-    width: 22,
-    height: 22,
-    borderRadius: 4,
-    borderWidth: layout.borderWidth,
-    borderColor: colours.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  checkboxOn: { backgroundColor: colours.accent, borderColor: colours.accent },
-  checkMark: {
-    color: colours.textInverse,
-    fontSize: fontSize.label,
-    fontWeight: fontWeight.bold,
-  },
-  checkLabel: { fontSize: fontSize.secondary, color: colours.textPrimary, flexShrink: 1 },
-  checklistHint: {
-    fontSize: fontSize.label,
-    color: colours.textSecondary,
-    marginTop: spacing.sm,
-    lineHeight: 16,
-  },
-  savedNote: {
-    fontSize: fontSize.secondary,
-    color: colours.textSecondary,
-    marginBottom: spacing.md,
-  },
-  waiting: {
-    fontSize: fontSize.secondary,
-    color: colours.textSecondary,
-    marginTop: spacing.sm,
-    lineHeight: 20,
-  },
-  error: {
-    color: colours.critical,
-    fontSize: fontSize.secondary,
-    marginBottom: spacing.md,
-  },
-});
+}));

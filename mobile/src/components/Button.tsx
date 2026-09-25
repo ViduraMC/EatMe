@@ -8,7 +8,7 @@ import { makeStyles, useTheme } from '../theme';
 import type { HapticKind } from '../utils/haptics';
 
 export type ButtonVariant =
-  'primary' | 'secondary' | 'tonal' | 'ghost' | 'danger' | 'success';
+  'primary' | 'secondary' | 'tonal' | 'ghost' | 'danger' | 'dangerGhost' | 'success';
 
 export type ButtonSize = 'sm' | 'md' | 'lg';
 
@@ -38,7 +38,8 @@ export interface ButtonProps {
  * - secondary: an alternative (Cancel, Back to listings)
  * - tonal:     a supporting action that should still stand out (Add another item)
  * - ghost:     low emphasis, inline (See all, Skip)
- * - danger:    destructive (Cancel listing)
+ * - danger:      destructive, confirming it (the red button in a confirm sheet)
+ * - dangerGhost: destructive but quiet, where it should be findable, not prominent
  * - success:   confirming a handover
  *
  * A screen should have at most one primary button, so the next step is never
@@ -69,6 +70,7 @@ export function Button({
     tonal: theme.colors.brandText,
     ghost: theme.colors.brandText,
     danger: theme.isDark ? theme.colors.onBrand : '#FFFFFF',
+    dangerGhost: theme.colors.criticalText,
     success: theme.colors.onOlive,
   }[variant];
 
@@ -142,6 +144,7 @@ const useStyles = makeStyles((t) => ({
   tonal: { backgroundColor: t.colors.brandSoft },
   ghost: { backgroundColor: 'transparent', paddingHorizontal: t.spacing.sm },
   danger: { backgroundColor: t.colors.critical },
+  dangerGhost: { backgroundColor: 'transparent', paddingHorizontal: t.spacing.sm },
   success: { backgroundColor: t.colors.olive, ...t.elevation(1) },
   disabled: { opacity: 0.45 },
   labelSm: { fontSize: 14 },

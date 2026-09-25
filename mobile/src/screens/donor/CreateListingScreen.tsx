@@ -1,153 +1,260 @@
-import React, { useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
-import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-
-import { Button, Input, ScreenContainer } from '../../components';
+import React, { useRef, useState } from 'react';
+import { ScrollView, View, type TextInput } from 'react-native';
+import Animated from 'react-native-reanimated';
+import {
+  AppText,
+  Button,
+  Chip,
+  ChipRow,
+  DateTimeField,
+  ProgressBar,
+  Screen,
+  SectionHeader,
+  TextField,
+} from '../../components';
 import { useAuth } from '../../context/AuthContext';
-import { colours, fontSize, fontWeight, spacing } from '../../constants/theme';
-import { DATE_TIME_HINT, parseLocalDateTime, toInputValue } from '../../utils/datetime';
-import type { DonorStackParamList } from '../../navigation/types';
+import { useI18n, type TKey } from '../../i18n';
+import { makeStyles } from '../../theme';
+import { enterSection, useReducedMotion } from '../../theme/animations';
+import { haptics } from '../../utils/haptics';
+import type { DonorStackProps } from '../../navigation/types';
 
-type Props = NativeStackScreenProps<DonorStackParamList, 'CreateListing'>;
+type Field = 'title' | 'address' | 'start' | 'end';
+type Errors = Partial<Record<Field, TKey>>;
 
-/** Rounds up to the next half hour, so the prefilled window looks deliberate. */
-function nextHalfHour(offsetHours: number): Date {
-  const d = new Date(Date.now() + offsetHours * 3600_000);
-  d.setMinutes(d.getMinutes() > 30 ? 60 : 30, 0, 0);
+const HOUR = 3_600_000;
+
+/** The next half hour after now, plus 30 minutes: a realistic earliest pickup. */
+function defaultStart(): Date {
+  const d = new Date(Date.now() + 30 * 60_000);
+  d.setSeconds(0, 0);
+  d.setMinutes(d.getMinutes() < 30 ? 30 : 60);
   return d;
 }
 
+const IDEAS: TKey[] = ['donor.idea1', 'donor.idea2', 'donor.idea3'];
+
 /**
- * Step 1 of 2: the listing's own details.
+ * Step 1 of 2: what is being shared, where, and when it can be collected.
  *
- * Nothing is sent to the API here. The details are handed to AddItems, which
- * publishes the listing and its items together, because a listing with no
- * items is not something a recipient can act on.
+ * Everything that can be defaulted is: the pickup address is the donor's
+ * own, and the window starts shortly and lasts two hours. The fastest path
+ * is "type a title, tap Next". Donors only change what differs from the
+ * usual.
+ *
+ * Dates are picked, not typed, so an impossible window (ending before it
+ * starts, starting in the past) cannot be entered.
  */
-export function CreateListingScreen({ navigation }: Props) {
+export function CreateListingScreen({ navigation }: DonorStackProps<'CreateListing'>) {
+  const styles = useStyles();
+  const { t } = useI18n();
   const { user } = useAuth();
+  const reduced = useReducedMotion();
+  const descRef = useRef<TextInput>(null);
 
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  // Prefilled from the donor's registered address, which is right most of the
-  // time and saves retyping. Still editable: a hotel may collect from a
-  // different entrance.
-  const [pickupAddress, setPickupAddress] = useState(user?.address ?? '');
-  const [windowStart, setWindowStart] = useState(toInputValue(nextHalfHour(1)));
-  const [windowEnd, setWindowEnd] = useState(toInputValue(nextHalfHour(4)));
-  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [address, setAddress] = useState(user?.address ?? '');
+  const [start, setStart] = useState<Date | null>(defaultStart);
+  const [end, setEnd] = useState<Date | null>(
+    () => new Date(defaultStart().getTime() + 2 * HOUR),
+  );
+  const [errors, setErrors] = useState<Errors>({});
 
-  function handleNext() {
-    const next: Record<string, string> = {};
+  function validate(): Errors {
+    const e: Errors = {};
+    if (title.trim().length < 3) e.title = 'donor.titleShort';
+    if (address.trim().length < 5) e.address = 'auth.addressShort';
+    if (!start) e.start = 'donor.startRequired';
+    else if (start.getTime() < Date.now() - 5 * 60_000) e.start = 'donor.startPast';
+    if (!end) e.end = 'donor.endRequired';
+    else if (start && end.getTime() <= start.getTime()) e.end = 'donor.endBeforeStart';
+    return e;
+  }
 
-    if (title.trim().length < 3) next.title = 'Title must be at least 3 characters';
-    if (pickupAddress.trim().length < 5)
-      next.pickupAddress = 'Enter a full pickup address';
-
-    const start = parseLocalDateTime(windowStart);
-    const end = parseLocalDateTime(windowEnd);
-
-    if (!start) next.windowStart = `Use the format ${DATE_TIME_HINT}`;
-    if (!end) next.windowEnd = `Use the format ${DATE_TIME_HINT}`;
-    if (start && end && end.getTime() <= start.getTime()) {
-      next.windowEnd = 'The window must end after it starts';
+  function onNext() {
+    const e = validate();
+    setErrors(e);
+    if (Object.keys(e).length > 0 || !start || !end) {
+      haptics.error();
+      return;
     }
-
-    setErrors(next);
-    if (Object.keys(next).length > 0) return;
-
     navigation.navigate('AddItems', {
       title: title.trim(),
       description: description.trim(),
-      pickupAddress: pickupAddress.trim(),
-      pickupWindowStart: start!.toISOString(),
-      pickupWindowEnd: end!.toISOString(),
+      pickupAddress: address.trim(),
+      pickupWindowStart: start.toISOString(),
+      pickupWindowEnd: end.toISOString(),
     });
   }
 
+  function setDuration(hours: number) {
+    if (!start) return;
+    setEnd(new Date(start.getTime() + hours * HOUR));
+    setErrors((e) => ({ ...e, end: undefined }));
+  }
+
+  const err = (f: Field) => (errors[f] ? t(errors[f]!) : undefined);
+  const endHours =
+    start && end ? Math.round((end.getTime() - start.getTime()) / HOUR) : null;
+
   return (
-    <ScreenContainer scroll avoidKeyboard>
-      <Text style={styles.step}>Step 1 of 2</Text>
-      <Text style={styles.heading}>Listing details</Text>
+    <Screen
+      edges={['left', 'right']}
+      avoidKeyboard
+      footer={
+        <Button
+          label={t('donor.nextAddFood')}
+          iconRight="arrow-forward"
+          size="lg"
+          onPress={onNext}
+        />
+      }
+    >
+      <ScrollView
+        contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.progress}>
+          <AppText variant="caption" color="textSecondary">
+            {t('auth.stepOf', { step: 1, total: 2 })}
+          </AppText>
+          <ProgressBar value={0.5} height={6} />
+        </View>
 
-      <Input
-        label="Title"
-        value={title}
-        onChangeText={setTitle}
-        placeholder="End of day bread and buns"
-        error={errors.title}
-      />
+        <Animated.View entering={enterSection(0, reduced)}>
+          <AppText variant="title" accessibilityRole="header">
+            {t('donor.createTitle')}
+          </AppText>
+          <AppText variant="body" color="textSecondary" style={styles.subtitle}>
+            {t('donor.createSubtitle')}
+          </AppText>
+        </Animated.View>
 
-      <Input
-        label="Description (optional)"
-        value={description}
-        onChangeText={setDescription}
-        placeholder="Unsold stock from today, still good tomorrow morning"
-        multiline
-      />
+        <Animated.View entering={enterSection(1, reduced)}>
+          <TextField
+            label={t('donor.titleLabel')}
+            icon="pricetag-outline"
+            value={title}
+            onChangeText={(v) => {
+              setTitle(v);
+              if (errors.title) setErrors((e) => ({ ...e, title: undefined }));
+            }}
+            error={err('title')}
+            placeholder={t('donor.titlePlaceholder')}
+            maxLength={150}
+            returnKeyType="next"
+            onSubmitEditing={() => descRef.current?.focus()}
+            clearable
+          />
+          <AppText variant="caption" color="textSecondary" style={styles.ideasLabel}>
+            {t('donor.quickIdeas')}
+          </AppText>
+          <ChipRow style={styles.ideas}>
+            {IDEAS.map((key) => (
+              <Chip
+                key={key}
+                label={t(key)}
+                icon="bulb-outline"
+                tone="olive"
+                selected={title === t(key)}
+                onPress={() => {
+                  setTitle(t(key));
+                  setErrors((e) => ({ ...e, title: undefined }));
+                }}
+              />
+            ))}
+          </ChipRow>
 
-      <Input
-        label="Pickup address"
-        value={pickupAddress}
-        onChangeText={setPickupAddress}
-        placeholder="134 Main Street, Colombo 11"
-        multiline
-        error={errors.pickupAddress}
-      />
+          <TextField
+            ref={descRef}
+            label={t('donor.descriptionLabel')}
+            optional
+            value={description}
+            onChangeText={setDescription}
+            placeholder={t('donor.descriptionPlaceholder')}
+            multiline
+            maxLength={500}
+            showCount
+          />
 
-      <View style={styles.note}>
-        <Text style={styles.noteText}>
-          Pickup window. Use the format {DATE_TIME_HINT}, for example{' '}
-          {toInputValue(nextHalfHour(2))}.
-        </Text>
-      </View>
+          <TextField
+            label={t('donor.addressLabel')}
+            icon="location-outline"
+            value={address}
+            onChangeText={(v) => {
+              setAddress(v);
+              if (errors.address) setErrors((e) => ({ ...e, address: undefined }));
+            }}
+            error={err('address')}
+            multiline
+          />
+          {user?.address && address.trim() !== user.address.trim() ? (
+            <Chip
+              label={t('donor.useMyAddress')}
+              icon="home-outline"
+              onPress={() => setAddress(user.address)}
+              style={styles.useMine}
+            />
+          ) : null}
+        </Animated.View>
 
-      <Input
-        label="Collect from"
-        value={windowStart}
-        onChangeText={setWindowStart}
-        placeholder={DATE_TIME_HINT}
-        autoCapitalize="none"
-        error={errors.windowStart}
-      />
-
-      <Input
-        label="Collect until"
-        value={windowEnd}
-        onChangeText={setWindowEnd}
-        placeholder={DATE_TIME_HINT}
-        autoCapitalize="none"
-        error={errors.windowEnd}
-      />
-
-      <Button label="Next: Add Items" onPress={handleNext} />
-    </ScreenContainer>
+        <Animated.View entering={enterSection(2, reduced)}>
+          <SectionHeader title={t('donor.windowTitle')} />
+          <AppText variant="secondary" color="textSecondary" style={styles.windowHelp}>
+            {t('donor.windowHelp')}
+          </AppText>
+          <DateTimeField
+            label={t('donor.windowStart')}
+            value={start}
+            minimum={new Date(Date.now() - 5 * 60_000)}
+            error={err('start')}
+            onChange={(d) => {
+              const duration = start && end ? end.getTime() - start.getTime() : 2 * HOUR;
+              setStart(d);
+              // Keep the same length of window when the start moves.
+              setEnd(new Date(d.getTime() + Math.max(duration, HOUR)));
+              setErrors((e) => ({ ...e, start: undefined, end: undefined }));
+            }}
+          />
+          <DateTimeField
+            label={t('donor.windowEnd')}
+            value={end}
+            minimum={start ? new Date(start.getTime() + 30 * 60_000) : undefined}
+            error={err('end')}
+            onChange={(d) => {
+              setEnd(d);
+              setErrors((e) => ({ ...e, end: undefined }));
+            }}
+          />
+          <ChipRow>
+            {[1, 2, 3, 4].map((h) => (
+              <Chip
+                key={h}
+                label={t('donor.plusHours', { count: h })}
+                icon="time-outline"
+                selected={endHours === h}
+                onPress={() => setDuration(h)}
+              />
+            ))}
+          </ChipRow>
+        </Animated.View>
+      </ScrollView>
+    </Screen>
   );
 }
 
-const styles = StyleSheet.create({
-  step: {
-    fontSize: fontSize.label,
-    fontWeight: fontWeight.semibold,
-    color: colours.accent,
-    letterSpacing: 0.5,
-    textTransform: 'uppercase',
+const useStyles = makeStyles((t) => ({
+  content: { padding: t.layout.screenPadding, paddingBottom: t.spacing.xxl },
+  progress: { gap: t.spacing.xs + 2, marginBottom: t.spacing.lg },
+  subtitle: { marginTop: t.spacing.xs, marginBottom: t.spacing.lg },
+  ideasLabel: { marginTop: -t.spacing.sm, marginBottom: t.spacing.xs },
+  ideas: { marginBottom: t.spacing.lg },
+  useMine: {
+    alignSelf: 'flex-start',
+    marginTop: -t.spacing.sm,
+    marginBottom: t.spacing.md,
   },
-  heading: {
-    fontSize: fontSize.title,
-    fontWeight: fontWeight.bold,
-    color: colours.textPrimary,
-    marginBottom: spacing.lg,
-  },
-  note: {
-    backgroundColor: colours.surface,
-    borderRadius: spacing.sm,
-    padding: spacing.sm,
-    marginBottom: spacing.md,
-  },
-  noteText: {
-    fontSize: fontSize.label,
-    color: colours.textSecondary,
-    lineHeight: 18,
-  },
-});
+  windowHelp: { marginTop: -t.spacing.xs, marginBottom: t.spacing.md },
+}));
