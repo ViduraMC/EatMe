@@ -13,9 +13,9 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { api, getErrorMessage } from '../../api/client';
 import { colours, fontSize, fontWeight, layout, spacing } from '../../constants/theme';
 
-import type { AdminStackParamList } from '../../navigation/types';
+import type { AdminTabProps } from '../../navigation/types';
 
-type Props = NativeStackScreenProps<AdminStackParamList, 'AdminHome'>;
+type Props = AdminTabProps<'AdminHome'>;
 
 interface AdminStats {
   users: {

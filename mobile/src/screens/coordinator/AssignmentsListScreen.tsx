@@ -17,9 +17,9 @@ import { getErrorMessage } from '../../api/client';
 import { colours, fontSize, fontWeight, spacing } from '../../constants/theme';
 import { formatDateTime } from '../../utils/datetime';
 import type { CoordinatorAssignment, AssignmentStatus } from '../../types/assignment';
-import type { CoordinatorStackParamList } from '../../navigation/types';
+import type { CoordinatorTabProps } from '../../navigation/types';
 
-type Props = NativeStackScreenProps<CoordinatorStackParamList, 'AssignmentsList'>;
+type Props = CoordinatorTabProps<'AssignmentsList'>;
 
 const FILTER_OPTIONS: { label: string; value?: AssignmentStatus }[] = [
   { label: 'All' },

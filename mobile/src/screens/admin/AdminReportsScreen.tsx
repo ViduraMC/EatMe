@@ -18,9 +18,9 @@ import { File, Paths } from 'expo-file-system';
 import { api, getErrorMessage } from '../../api/client';
 import { colours, fontSize, fontWeight, layout, spacing } from '../../constants/theme';
 
-import type { AdminStackParamList } from '../../navigation/types';
+import type { AdminTabProps } from '../../navigation/types';
 
-type Props = NativeStackScreenProps<AdminStackParamList, 'AdminReports'>;
+type Props = AdminTabProps<'AdminReports'>;
 
 type ReportType = 'overall' | 'users' | 'donations' | 'requests' | 'deliveries';
 

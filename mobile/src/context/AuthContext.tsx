@@ -17,8 +17,10 @@ interface AuthContextValue {
   isRestoring: boolean;
   /** True while a login or register request is in flight. */
   isSubmitting: boolean;
-  login: (input: LoginInput) => Promise<void>;
-  register: (input: RegisterInput) => Promise<void>;
+  /** Resolves with the signed-in user, so the caller can greet them by name. */
+  login: (input: LoginInput) => Promise<User>;
+  /** Resolves with the new user; check `status` for "pending" recipients. */
+  register: (input: RegisterInput) => Promise<User>;
   logout: () => Promise<void>;
   updateUser: (patch: Partial<User>) => void;
 }
@@ -95,11 +97,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const login = useCallback(
-    async (input: LoginInput) => {
+    async (input: LoginInput): Promise<User> => {
       setIsSubmitting(true);
       try {
         const payload = await loginRequest(input);
         await applyAuth(payload);
+        return payload.user;
       } finally {
         setIsSubmitting(false);
       }
@@ -108,17 +111,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   );
 
   const register = useCallback(
-    async (input: RegisterInput) => {
+    async (input: RegisterInput): Promise<User> => {
       setIsSubmitting(true);
 
       try {
         const payload = await registerRequest(input);
 
+        // A recipient awaiting approval is not signed in. The caller shows
+        // the "we're verifying you" screen instead.
         if (payload.user.status === 'pending') {
-          return;
+          return payload.user;
         }
 
         await applyAuth(payload);
+        return payload.user;
       } finally {
         setIsSubmitting(false);
       }

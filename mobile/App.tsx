@@ -6,6 +6,7 @@ import { useFonts } from 'expo-font';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AuthProvider } from './src/context/AuthContext';
+import { OnboardingProvider } from './src/context/OnboardingContext';
 import { RootNavigator } from './src/navigation/RootNavigator';
 import { LanguageProvider, isLanguage, type Language } from './src/i18n';
 import {
@@ -27,6 +28,7 @@ SplashScreen.preventAutoHideAsync().catch(() => {
 interface Boot {
   language: Language;
   theme: ThemePreference;
+  onboarded: boolean;
 }
 
 function ThemedStatusBar() {
@@ -52,14 +54,16 @@ export default function App() {
   useEffect(() => {
     let cancelled = false;
     void (async () => {
-      const [language, theme] = await Promise.all([
+      const [language, theme, onboarded] = await Promise.all([
         readPref('language'),
         readPref('theme'),
+        readPref('onboarded'),
       ]);
       if (!cancelled) {
         setBoot({
           language: isLanguage(language) ? language : 'en',
           theme: isThemePreference(theme) ? theme : 'system',
+          onboarded: onboarded === 'yes',
         });
       }
     })();
@@ -85,10 +89,12 @@ export default function App() {
           <ThemeProvider initialPreference={boot.theme}>
             <ToastProvider>
               <ConfirmProvider>
-                <AuthProvider>
-                  <ThemedStatusBar />
-                  <RootNavigator />
-                </AuthProvider>
+                <OnboardingProvider initial={boot.onboarded}>
+                  <AuthProvider>
+                    <ThemedStatusBar />
+                    <RootNavigator />
+                  </AuthProvider>
+                </OnboardingProvider>
               </ConfirmProvider>
             </ToastProvider>
           </ThemeProvider>

@@ -14,12 +14,9 @@ import { useAuth } from '../../context/AuthContext';
 import { colours, fontSize, fontWeight, spacing } from '../../constants/theme';
 import { formatDateTime, formatTimeUntil } from '../../utils/datetime';
 import type { AssignmentQueueRequest, CoordinatorStats } from '../../types/assignment';
-import type { CoordinatorStackParamList } from '../../navigation/types';
+import type { CoordinatorTabProps } from '../../navigation/types';
 
-type NavigationProp = NativeStackNavigationProp<
-  CoordinatorStackParamList,
-  'CoordinatorHome'
->;
+type NavigationProp = CoordinatorTabProps<'CoordinatorHome'>['navigation'];
 
 export function CoordinatorHomeScreen() {
   const { user, logout } = useAuth();
