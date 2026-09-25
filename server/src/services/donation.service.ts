@@ -7,7 +7,7 @@ import {
   type ExpiryInput,
   type UrgencyLevel,
 } from './urgency.service';
-import { statusAfterPickupConfirmation } from './assignment.service';
+import { settlePickupStatus, statusAfterPickupConfirmation } from './assignment.service';
 
 /**
  * Donation and Food Listing business logic. Owner: Vidura.
@@ -563,13 +563,22 @@ export async function confirmPickupAsDonor(
     pickupDriverConfirmedAt: existing.pickupDriverConfirmedAt,
   });
 
-  return prisma.deliveryAssignment.update({
+  await prisma.deliveryAssignment.update({
     where: { assignmentId },
     data: {
       pickupDonorConfirmedAt: confirmedAt,
       status: nextStatus,
       ...(input.notes ? { pickupNotes: input.notes } : {}),
     },
+  });
+
+  // The driver may have confirmed at the same moment. See settlePickupStatus.
+  await settlePickupStatus(assignmentId);
+
+  // Re-read so the response carries the settled status. ConfirmPickupScreen
+  // uses it to tell the donor whether the delivery is now in transit.
+  return prisma.deliveryAssignment.findUniqueOrThrow({
+    where: { assignmentId },
     include: assignmentInclude,
   });
 }

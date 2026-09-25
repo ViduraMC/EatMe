@@ -102,6 +102,34 @@ export function statusAfterPickupConfirmation(assignment: {
   return bothConfirmed ? 'in_transit' : assignment.status;
 }
 
+/**
+ * Moves an assignment to in_transit if both pickup confirmations are now in
+ * the database. Call it straight after writing either side's confirmation.
+ *
+ * Why it exists: each side reads the other side's timestamp, then writes its
+ * own. When the donor and the driver confirm at the same moment, which is
+ * exactly what happens at a handover, both reads see the other side as not
+ * yet confirmed, both timestamps get written, and the status stays accepted
+ * for good. Drop off then refuses ("both must confirm"), and neither side can
+ * confirm again, so the delivery is stuck.
+ *
+ * This is a single conditional UPDATE, so it reads the committed row rather
+ * than a copy fetched earlier. Each side runs it after its own write, so
+ * whichever runs last is guaranteed to see both timestamps and promote the
+ * row. The WHERE clause is the same rule as statusAfterPickupConfirmation.
+ */
+export async function settlePickupStatus(assignmentId: number): Promise<void> {
+  await prisma.deliveryAssignment.updateMany({
+    where: {
+      assignmentId,
+      status: 'accepted',
+      pickupDonorConfirmedAt: { not: null },
+      pickupDriverConfirmedAt: { not: null },
+    },
+    data: { status: 'in_transit' },
+  });
+}
+
 export interface ConfirmPickupInput {
   /** Optional free text written to pickup_notes. */
   notes?: string | null;
@@ -153,13 +181,22 @@ export async function confirmPickupAsDriver(
     pickupDriverConfirmedAt: confirmedAt,
   });
 
-  return prisma.deliveryAssignment.update({
+  await prisma.deliveryAssignment.update({
     where: { assignmentId },
     data: {
       pickupDriverConfirmedAt: confirmedAt,
       status: nextStatus,
       ...(input.notes ? { pickupNotes: input.notes } : {}),
     },
+  });
+
+  // The donor may have confirmed at the same moment. See settlePickupStatus.
+  await settlePickupStatus(assignmentId);
+
+  // Re-read so the response shows the settled status, not the one computed
+  // before the donor's confirmation landed.
+  return prisma.deliveryAssignment.findUniqueOrThrow({
+    where: { assignmentId },
     select: driverAssignmentSelect,
   });
 }
