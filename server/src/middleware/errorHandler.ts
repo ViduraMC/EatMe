@@ -1,5 +1,6 @@
 import type { Request, Response, NextFunction } from 'express';
 import { Prisma } from '@prisma/client';
+import { ZodError } from 'zod';
 import { ApiError } from '../utils/apiError';
 import { sendError } from '../utils/apiResponse';
 import { isProduction } from '../config/env';
@@ -28,6 +29,20 @@ export function errorHandler(
 ): void {
   if (err instanceof ApiError) {
     sendError(res, err.statusCode, err.message, err.details);
+    return;
+  }
+
+  /*
+   * A controller called schema.parse() directly instead of using the
+   * validateBody middleware, and the input was invalid.
+   *
+   * Without this branch a ZodError falls through to the 500 below, so a user
+   * who types a one-letter title sees "Something went wrong" instead of what
+   * to fix. The shape matches validateBody exactly, so the app's
+   * getErrorMessage() reads the first field message either way.
+   */
+  if (err instanceof ZodError) {
+    sendError(res, 400, 'Validation failed', err.flatten().fieldErrors);
     return;
   }
 
