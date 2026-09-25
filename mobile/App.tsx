@@ -16,6 +16,7 @@ import {
   type ThemePreference,
 } from './src/theme';
 import { readPref } from './src/utils/preferences';
+import { ConfirmProvider, ToastProvider } from './src/components';
 
 // Keep the native splash up until fonts and saved preferences are ready, so
 // the first frame is already in the right language, theme and typeface.
@@ -40,6 +41,8 @@ function ThemedStatusBar() {
  *   can receive gestures anywhere on screen.
  * - LanguageProvider sits above ThemeProvider, because the theme picks the
  *   Sinhala or Latin typeface from the current language.
+ * - ToastProvider and ConfirmProvider sit inside the theme, because toasts
+ *   and confirm sheets are themed, and above every screen that uses them.
  * - AuthProvider sits above RootNavigator, which mounts a stack per role.
  */
 export default function App() {
@@ -80,10 +83,14 @@ export default function App() {
       <SafeAreaProvider>
         <LanguageProvider initialLanguage={boot.language}>
           <ThemeProvider initialPreference={boot.theme}>
-            <AuthProvider>
-              <ThemedStatusBar />
-              <RootNavigator />
-            </AuthProvider>
+            <ToastProvider>
+              <ConfirmProvider>
+                <AuthProvider>
+                  <ThemedStatusBar />
+                  <RootNavigator />
+                </AuthProvider>
+              </ConfirmProvider>
+            </ToastProvider>
           </ThemeProvider>
         </LanguageProvider>
       </SafeAreaProvider>

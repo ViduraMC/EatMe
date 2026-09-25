@@ -232,9 +232,25 @@ export const en = {
     replayIntro: 'Replay the introduction',
   },
 
+  picker: {
+    date: 'Date',
+    time: 'Time',
+    placeholder: 'Choose a date and time',
+    placeholderDate: 'Choose a date',
+    inOneHour: 'In 1 hour',
+    thisEvening: 'This evening',
+    tomorrowMorning: 'Tomorrow morning',
+    tomorrowEvening: 'Tomorrow evening',
+    inOneWeek: 'In 1 week',
+    previousMonth: 'Previous month',
+    nextMonth: 'Next month',
+    unavailable: 'Not available',
+  },
+
   errors: {
     generic: 'Something went wrong. Please try again.',
     network: 'Can’t reach EatMe. Check your connection and try again.',
+    timeout: 'EatMe is taking too long to answer. Please try again.',
     loadFailed: 'We couldn’t load this.',
     notFound: 'This no longer exists.',
     offlineTitle: 'You’re offline',

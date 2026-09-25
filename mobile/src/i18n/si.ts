@@ -231,9 +231,25 @@ export const si: Widen<Dictionary> = {
     replayIntro: 'හැඳින්වීම නැවත බලන්න',
   },
 
+  picker: {
+    date: 'දිනය',
+    time: 'වේලාව',
+    placeholder: 'දිනයක් සහ වේලාවක් තෝරන්න',
+    placeholderDate: 'දිනයක් තෝරන්න',
+    inOneHour: 'පැයකින්',
+    thisEvening: 'අද සවස',
+    tomorrowMorning: 'හෙට උදේ',
+    tomorrowEvening: 'හෙට සවස',
+    inOneWeek: 'සතියකින්',
+    previousMonth: 'පෙර මාසය',
+    nextMonth: 'ඊළඟ මාසය',
+    unavailable: 'ලබා ගත නොහැක',
+  },
+
   errors: {
     generic: 'යමක් වැරදුණා. කරුණාකර නැවත උත්සාහ කරන්න.',
     network: 'EatMe වෙත සම්බන්ධ විය නොහැක. ඔබේ සම්බන්ධතාවය පරීක්ෂා කර නැවත උත්සාහ කරන්න.',
+    timeout: 'EatMe පිළිතුරු දීමට වැඩි කාලයක් ගනී. කරුණාකර නැවත උත්සාහ කරන්න.',
     loadFailed: 'මෙය පූරණය කළ නොහැකි විය.',
     notFound: 'මෙය තවදුරටත් නොපවතී.',
     offlineTitle: 'ඔබ සම්බන්ධ වී නැත',
