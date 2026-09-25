@@ -3,8 +3,7 @@ import type { ViewStyle } from 'react-native';
 
 /**
  * Spacing on an 8px grid, with 4 and 2 for the fine gaps between a label and
- * its value. The names match the old constants/theme.ts so screens migrating
- * across keep their layout.
+ * its value.
  */
 export const spacing = {
   xxs: 2,

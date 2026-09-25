@@ -535,10 +535,7 @@ export function RootNavigator() {
   const theme = useTheme();
 
   return (
-    // navigationInChildEnabled keeps navigate('TabName') working from screens
-    // inside a role's stack while the remaining screens move to the nested
-    // navigation API. Remove it once every screen passes { screen } itself.
-    <NavigationContainer theme={theme.navigation} navigationInChildEnabled>
+    <NavigationContainer theme={theme.navigation}>
       <Root.Navigator screenOptions={{ headerShown: false, animation: 'fade' }}>
         {isRestoring ? (
           <Root.Screen name="Splash" component={SplashScreen} />
