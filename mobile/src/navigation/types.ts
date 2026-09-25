@@ -4,6 +4,7 @@ import type {
 } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
+import type { AssignmentStatus } from '../types/assignment';
 
 /**
  * Route names and their parameters.
@@ -102,8 +103,8 @@ export type RecipientStackProps<T extends keyof RecipientStackParamList> =
 
 export type CoordinatorTabParamList = {
   CoordinatorHome: undefined;
-  /** US-C02: Live status tracking of all delivery assignments. */
-  AssignmentsList: undefined;
+  /** US-C02: Live status tracking of all delivery assignments. Optionally pre-filtered. */
+  AssignmentsList: { status?: AssignmentStatus } | undefined;
   DriversList: undefined;
   CoordinatorProfile: undefined;
 };

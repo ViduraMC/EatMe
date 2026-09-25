@@ -1,55 +1,78 @@
 import React, { useCallback, useState } from 'react';
-import {
-  ActivityIndicator,
-  Alert,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
-} from 'react-native';
+import { ScrollView, View } from 'react-native';
+import Animated from 'react-native-reanimated';
 import { useFocusEffect } from '@react-navigation/native';
-import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-
-import { Button, Card, ScreenContainer, StatusPill } from '../../components';
+import {
+  AppText,
+  Avatar,
+  Button,
+  Card,
+  Chip,
+  ChipRow,
+  EmptyState,
+  ErrorState,
+  Icon,
+  InfoBanner,
+  Screen,
+  SkeletonList,
+  TextField,
+  useToast,
+} from '../../components';
 import {
   createAssignment,
   fetchAssignmentQueue,
   fetchDrivers,
 } from '../../api/assignments.api';
-import { getErrorMessage } from '../../api/client';
-import { colours, fontSize, fontWeight, spacing } from '../../constants/theme';
-import { formatDateTime, formatTimeUntil } from '../../utils/datetime';
-import type { AssignmentQueueRequest } from '../../types/assignment';
-import type { DriverInfo } from '../../types/assignment';
-import type { CoordinatorStackParamList } from '../../navigation/types';
+import { useI18n, type TKey } from '../../i18n';
+import { describeError } from '../../i18n/errors';
+import { useFormat } from '../../i18n/format';
+import { makeStyles } from '../../theme';
+import { enterSection, useReducedMotion } from '../../theme/animations';
+import type { AssignmentQueueRequest, DriverInfo } from '../../types/assignment';
+import type { CoordinatorStackProps } from '../../navigation/types';
+import { DriverPicker } from './components/DriverPicker';
 
-type Props = NativeStackScreenProps<CoordinatorStackParamList, 'CreateAssignment'>;
+const NOTE_IDEAS: TKey[] = [
+  'coordinator.noteIdea1',
+  'coordinator.noteIdea2',
+  'coordinator.noteIdea3',
+];
 
-export function CreateAssignmentScreen({ route, navigation }: Props) {
+/**
+ * Matching a request with a driver.
+ *
+ * The request is summarised at the top so the coordinator never has to
+ * remember what they tapped, and the button names the person ("Assign to
+ * Sunil") so the choice is read back before it is made.
+ */
+export function CreateAssignmentScreen({
+  navigation,
+  route,
+}: CoordinatorStackProps<'CreateAssignment'>) {
+  const styles = useStyles();
+  const { t } = useI18n();
+  const f = useFormat();
+  const toast = useToast();
+  const reduced = useReducedMotion();
   const { requestId } = route.params;
 
   const [request, setRequest] = useState<AssignmentQueueRequest | null>(null);
   const [drivers, setDrivers] = useState<DriverInfo[]>([]);
-  const [selectedDriverId, setSelectedDriverId] = useState<number | null>(null);
-  const [noteToDriver, setNoteToDriver] = useState('');
+  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [note, setNote] = useState('');
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<unknown>(null);
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    setError(null);
     try {
-      const [queue, driverList] = await Promise.all([
-        fetchAssignmentQueue(),
-        fetchDrivers(),
-      ]);
-      const found = queue.find((r) => r.requestId === requestId) ?? null;
-      setRequest(found);
-      setDrivers(driverList);
+      const [queue, list] = await Promise.all([fetchAssignmentQueue(), fetchDrivers()]);
+      setRequest(queue.find((r) => r.requestId === requestId) ?? null);
+      setDrivers(list);
+      setError(null);
     } catch (err) {
-      setError(getErrorMessage(err));
+      setError(err);
     } finally {
       setLoading(false);
     }
@@ -61,290 +84,173 @@ export function CreateAssignmentScreen({ route, navigation }: Props) {
     }, [load]),
   );
 
-  const handleSubmit = useCallback(async () => {
-    if (!selectedDriverId) {
-      Alert.alert('Select Driver', 'Please select a driver before assigning.');
-      return;
-    }
+  const selected = drivers.find((d) => d.userId === selectedId) ?? null;
 
+  async function assign() {
+    if (!selected) return;
     setSubmitting(true);
+    setFormError(null);
     try {
       await createAssignment({
         requestId,
-        driverId: selectedDriverId,
-        noteToDriver: noteToDriver.trim() || null,
+        driverId: selected.userId,
+        noteToDriver: note.trim() || null,
       });
-      Alert.alert('Success', 'Driver assigned successfully!', [
-        { text: 'OK', onPress: () => navigation.goBack() },
-      ]);
+      toast.show({
+        type: 'success',
+        title: t('coordinator.assignedToast', { name: selected.name }),
+        message: t('coordinator.assignedBody'),
+      });
+      navigation.goBack();
     } catch (err) {
-      Alert.alert('Error', getErrorMessage(err));
+      setFormError(describeError(err, t).message);
     } finally {
       setSubmitting(false);
     }
-  }, [requestId, selectedDriverId, noteToDriver, navigation]);
+  }
 
   if (loading) {
     return (
-      <ScreenContainer>
-        <View style={styles.centre}>
-          <ActivityIndicator size="large" color={colours.accent} />
+      <Screen edges={['left', 'right']}>
+        <View style={styles.content}>
+          <SkeletonList count={3} />
         </View>
-      </ScreenContainer>
+      </Screen>
     );
   }
-
+  if (error) {
+    return (
+      <Screen edges={['left', 'right']}>
+        <ErrorState error={error} onRetry={() => void load()} />
+      </Screen>
+    );
+  }
   if (!request) {
     return (
-      <ScreenContainer>
-        <View style={styles.centre}>
-          <Text style={styles.errorText}>Request not found or already assigned.</Text>
-          <Button
-            label="Go Back"
-            variant="secondary"
-            onPress={() => navigation.goBack()}
-            style={styles.backButton}
-          />
-        </View>
-      </ScreenContainer>
+      <Screen edges={['left', 'right']}>
+        <EmptyState
+          illustration="allClear"
+          title={t('coordinator.requestGone')}
+          actionLabel={t('common.back')}
+          onAction={() => navigation.goBack()}
+        />
+      </Screen>
     );
   }
 
-  const worstLevel = request.items.some((i) => i.item.urgencyLevel === 'critical')
-    ? 'critical'
-    : request.items.some((i) => i.item.urgencyLevel === 'urgent')
-      ? 'urgent'
-      : 'safe';
-
-  const soonestExpiry =
-    request.items
-      .map((i) => i.item.effectiveExpiry)
-      .filter((d): d is string => !!d)
-      .sort()[0] ?? null;
+  const who = request.recipient.organisationName ?? request.recipient.name;
 
   return (
-    <ScreenContainer>
+    <Screen
+      edges={['left', 'right']}
+      avoidKeyboard
+      footer={
+        <Button
+          label={
+            selected
+              ? t('coordinator.assignTo', { name: selected.name })
+              : t('coordinator.chooseDriver')
+          }
+          icon="mc:truck-check-outline"
+          size="lg"
+          onPress={() => void assign()}
+          loading={submitting}
+          disabled={!selected}
+        />
+      }
+    >
       <ScrollView
-        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
       >
-        {!!error && <Text style={styles.error}>{error}</Text>}
-
-        {/* Request summary */}
-        <Text style={styles.sectionTitle}>Request Details</Text>
-        <Card style={styles.summaryCard}>
-          <View style={styles.cardTop}>
-            <Text style={styles.cardTitle} numberOfLines={1}>
-              {request.listing.title}
-            </Text>
-            <StatusPill label={worstLevel} tone={worstLevel} />
-          </View>
-
-          <Text style={styles.detailLabel}>Donor</Text>
-          <Text style={styles.detailValue}>
-            {request.listing.donor.organisationName ?? request.listing.donor.name}
-          </Text>
-          <Text style={styles.detailValue}>{request.listing.pickupAddress}</Text>
-
-          <Text style={styles.detailLabel}>Recipient</Text>
-          <Text style={styles.detailValue}>
-            {request.recipient.organisationName ?? request.recipient.name}
-          </Text>
-
-          <Text style={styles.detailLabel}>Items to Deliver</Text>
-          {request.items.map((ri) => (
-            <Text key={ri.requestItemId} style={styles.detailValue}>
-              • {ri.item.foodName} — {ri.quantityRequested} {ri.item.unit}
-            </Text>
-          ))}
-
-          <Text style={styles.detailLabel}>Pickup Window</Text>
-          <Text style={styles.detailValue}>
-            {formatDateTime(request.listing.pickupWindowStart)} →{' '}
-            {formatDateTime(request.listing.pickupWindowEnd)}
-          </Text>
-
-          {soonestExpiry && (
-            <>
-              <Text style={styles.detailLabel}>Soonest Expiry</Text>
-              <Text
-                style={[
-                  styles.detailValue,
-                  worstLevel === 'critical' && styles.criticalText,
-                ]}
-              >
-                {formatTimeUntil(soonestExpiry)}
-              </Text>
-            </>
-          )}
-        </Card>
-
-        {/* Driver selection */}
-        <Text style={styles.sectionTitle}>Select Driver</Text>
-        {drivers.length === 0 ? (
-          <Text style={styles.emptyDrivers}>
-            No active drivers are currently available.
-          </Text>
-        ) : (
-          drivers.map((driver) => {
-            const isSelected = selectedDriverId === driver.userId;
-            return (
-              <TouchableOpacity
-                key={driver.userId}
-                style={[styles.driverRow, isSelected && styles.driverRowSelected]}
-                onPress={() => setSelectedDriverId(driver.userId)}
-                activeOpacity={0.7}
-              >
-                <View style={styles.driverRadio}>
-                  {isSelected && <View style={styles.driverRadioFill} />}
+        <Animated.View entering={enterSection(0, reduced)}>
+          <Card variant="tinted">
+            <View style={styles.head}>
+              <Avatar name={who} size={40} icon="mc:home-heart" />
+              <View style={styles.flex}>
+                <AppText variant="bodyStrong">{who}</AppText>
+                <AppText variant="caption" color="textSecondary" numberOfLines={1}>
+                  {t('coordinator.fromListing', { title: request.listing.title })}
+                </AppText>
+              </View>
+            </View>
+            <View style={styles.lines}>
+              {request.items.map((line) => (
+                <View key={line.requestItemId} style={styles.line}>
+                  <Icon name="ellipse" size={6} color="brand" />
+                  <AppText variant="secondary" numberOfLines={1} style={styles.flex}>
+                    {line.item.foodName}
+                  </AppText>
+                  <AppText variant="secondaryStrong">
+                    {f.quantity(line.quantityRequested, line.item.unit)}
+                  </AppText>
                 </View>
-                <View style={styles.driverInfo}>
-                  <Text style={styles.driverName}>{driver.name}</Text>
-                  <Text style={styles.driverMeta}>
-                    {driver.isAvailable ? '● Available' : '○ Busy'} ·{' '}
-                    {driver.phone ?? '—'}
-                  </Text>
-                </View>
-              </TouchableOpacity>
-            );
-          })
-        )}
+              ))}
+            </View>
+            <View style={styles.route}>
+              <Icon name="location-outline" size={16} color="brandText" />
+              <AppText variant="caption" color="textSecondary" style={styles.flex}>
+                {`${request.listing.pickupAddress} · ${f.window(request.listing.pickupWindowStart, request.listing.pickupWindowEnd)}`}
+              </AppText>
+            </View>
+          </Card>
+        </Animated.View>
 
-        {/* Note to driver */}
-        <Text style={styles.sectionTitle}>Note to Driver (optional)</Text>
-        <TextInput
-          style={styles.noteInput}
-          placeholder="e.g. Call when arriving at pickup address"
-          placeholderTextColor={colours.textSecondary}
-          value={noteToDriver}
-          onChangeText={setNoteToDriver}
+        <Animated.View entering={enterSection(1, reduced)}>
+          <AppText variant="headline" accessibilityRole="header" style={styles.title}>
+            {t('coordinator.assignTitle')}
+          </AppText>
+          <AppText variant="secondary" color="textSecondary" style={styles.subtitle}>
+            {t('coordinator.assignSubtitle')}
+          </AppText>
+          <DriverPicker
+            drivers={drivers}
+            selectedId={selectedId}
+            onSelect={setSelectedId}
+          />
+        </Animated.View>
+
+        <TextField
+          containerStyle={styles.note}
+          label={t('coordinator.noteLabel')}
+          optional
+          value={note}
+          onChangeText={setNote}
+          placeholder={t('coordinator.notePlaceholder')}
           multiline
-          numberOfLines={3}
           maxLength={1000}
         />
+        <ChipRow>
+          {NOTE_IDEAS.map((key) => (
+            <Chip
+              key={key}
+              label={t(key)}
+              icon="chatbubble-outline"
+              tone="olive"
+              selected={note === t(key)}
+              onPress={() => setNote(t(key))}
+            />
+          ))}
+        </ChipRow>
 
-        <Button
-          label={submitting ? 'Assigning…' : 'Create Assignment'}
-          variant="primary"
-          onPress={() => void handleSubmit()}
-          style={styles.submitButton}
-        />
+        {formError ? (
+          <InfoBanner tone="critical" message={formError} style={styles.error} />
+        ) : null}
       </ScrollView>
-    </ScreenContainer>
+    </Screen>
   );
 }
 
-const styles = StyleSheet.create({
-  centre: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  error: {
-    color: colours.critical,
-    fontSize: fontSize.secondary,
-    marginBottom: spacing.sm,
-  },
-  errorText: {
-    color: colours.textSecondary,
-    fontSize: fontSize.body,
-    textAlign: 'center',
-    marginBottom: spacing.md,
-  },
-  backButton: { alignSelf: 'center' },
-  sectionTitle: {
-    fontSize: fontSize.heading,
-    fontWeight: fontWeight.semibold,
-    color: colours.textPrimary,
-    marginTop: spacing.md,
-    marginBottom: spacing.sm,
-  },
-  summaryCard: {},
-  cardTop: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: spacing.sm,
-    gap: spacing.sm,
-  },
-  cardTitle: {
-    fontSize: fontSize.body,
-    fontWeight: fontWeight.semibold,
-    color: colours.textPrimary,
-    flexShrink: 1,
-  },
-  detailLabel: {
-    fontSize: fontSize.label,
-    color: colours.textSecondary,
-    marginTop: spacing.sm,
-    fontWeight: fontWeight.semibold,
-  },
-  detailValue: {
-    fontSize: fontSize.secondary,
-    color: colours.textPrimary,
-    lineHeight: 20,
-  },
-  criticalText: {
-    color: colours.critical,
-    fontWeight: fontWeight.semibold,
-  },
-  emptyDrivers: {
-    fontSize: fontSize.secondary,
-    color: colours.textSecondary,
-    textAlign: 'center',
-    paddingVertical: spacing.md,
-  },
-  driverRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: spacing.md,
-    borderRadius: spacing.sm,
-    borderWidth: 1,
-    borderColor: colours.border,
-    backgroundColor: colours.surface,
-    marginBottom: spacing.sm,
-    gap: spacing.sm,
-  },
-  driverRowSelected: {
-    borderColor: colours.accent,
-    backgroundColor: colours.surface,
-  },
-  driverRadio: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    borderWidth: 2,
-    borderColor: colours.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  driverRadioFill: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: colours.accent,
-  },
-  driverInfo: { flex: 1 },
-  driverName: {
-    fontSize: fontSize.body,
-    fontWeight: fontWeight.semibold,
-    color: colours.textPrimary,
-  },
-  driverMeta: {
-    fontSize: fontSize.secondary,
-    color: colours.textSecondary,
-    marginTop: 2,
-  },
-  noteInput: {
-    backgroundColor: colours.surface,
-    borderWidth: 1,
-    borderColor: colours.border,
-    borderRadius: spacing.sm,
-    padding: spacing.md,
-    color: colours.textPrimary,
-    fontSize: fontSize.body,
-    minHeight: 80,
-    textAlignVertical: 'top',
-    marginBottom: spacing.sm,
-  },
-  submitButton: {
-    marginTop: spacing.sm,
-    marginBottom: spacing.lg,
-  },
-});
+const useStyles = makeStyles((t) => ({
+  content: { padding: t.layout.screenPadding, paddingBottom: t.spacing.xxl },
+  flex: { flex: 1 },
+  head: { flexDirection: 'row', alignItems: 'center', gap: t.spacing.sm + 4 },
+  lines: { marginTop: t.spacing.sm + 4, gap: t.spacing.xs + 2 },
+  line: { flexDirection: 'row', alignItems: 'center', gap: t.spacing.sm },
+  route: { flexDirection: 'row', gap: t.spacing.xs + 2, marginTop: t.spacing.sm + 4 },
+  title: { marginTop: t.spacing.md },
+  subtitle: { marginTop: 2, marginBottom: t.spacing.sm },
+  note: { marginTop: t.spacing.lg },
+  error: { marginTop: t.spacing.md },
+}));

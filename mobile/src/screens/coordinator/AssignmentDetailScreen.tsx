@@ -1,100 +1,92 @@
 import React, { useCallback, useState } from 'react';
-import {
-  ActivityIndicator,
-  Alert,
-  Modal,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
-} from 'react-native';
+import { Linking, RefreshControl, ScrollView, View } from 'react-native';
+import Animated from 'react-native-reanimated';
 import { useFocusEffect } from '@react-navigation/native';
-import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-
-import { Button, Card, ScreenContainer, StatusPill } from '../../components';
+import {
+  AppText,
+  Avatar,
+  Badge,
+  BottomSheet,
+  Button,
+  Card,
+  ErrorState,
+  Icon,
+  IconButton,
+  InfoBanner,
+  Screen,
+  SectionHeader,
+  Skeleton,
+  SkeletonCard,
+  TextField,
+  Timeline,
+  useToast,
+} from '../../components';
 import {
   fetchAssignmentDetail,
   fetchDrivers,
   reassignDriver,
 } from '../../api/assignments.api';
-import { getErrorMessage } from '../../api/client';
-import { colours, fontSize, fontWeight, spacing } from '../../constants/theme';
-import { formatDateTime } from '../../utils/datetime';
-import type {
-  AssignmentDetail,
-  AssignmentStatus,
-  DriverInfo,
-} from '../../types/assignment';
-import type { CoordinatorStackParamList } from '../../navigation/types';
+import { useNow } from '../../hooks/useNow';
+import { useI18n } from '../../i18n';
+import { describeError } from '../../i18n/errors';
+import { useFormat } from '../../i18n/format';
+import { makeStyles, useTheme } from '../../theme';
+import { enterSection, useReducedMotion } from '../../theme/animations';
+import type { AssignmentDetail, DriverInfo } from '../../types/assignment';
+import { assignmentSteps } from '../../utils/assignmentTimeline';
+import { assignmentTone } from '../../utils/status';
+import type { CoordinatorStackProps } from '../../navigation/types';
+import { DriverPicker } from './components/DriverPicker';
 
-type Props = NativeStackScreenProps<CoordinatorStackParamList, 'AssignmentDetail'>;
-
-function statusTone(
-  status: AssignmentStatus,
-): 'safe' | 'urgent' | 'critical' | 'neutral' {
-  switch (status) {
-    case 'pending_driver':
-      return 'urgent';
-    case 'accepted':
-    case 'in_transit':
-      return 'safe';
-    case 'completed':
-      return 'neutral';
-    case 'declined':
-    case 'cancelled':
-      return 'critical';
-    default:
-      return 'neutral';
-  }
+function call(phone: string) {
+  void Linking.openURL(`tel:${phone.replace(/\s/g, '')}`);
 }
 
-function statusLabel(status: AssignmentStatus): string {
-  switch (status) {
-    case 'pending_driver':
-      return 'Awaiting Driver';
-    case 'accepted':
-      return 'Driver Accepted';
-    case 'in_transit':
-      return 'In Transit';
-    case 'completed':
-      return 'Completed';
-    case 'declined':
-      return 'Driver Declined';
-    case 'cancelled':
-      return 'Cancelled';
-    default:
-      return status;
-  }
-}
-
-export function AssignmentDetailScreen({ route, navigation }: Props) {
+/**
+ * One delivery in full: the route (collect from, deliver to), who is
+ * driving, what they carry, and every step with its time.
+ *
+ * Each person on it has a call button, because when something goes wrong
+ * the fix is usually a phone call, and a coordinator should not have to hunt
+ * for the number. A declined delivery leads with the reason and a Reassign
+ * button, which offers every driver except the one who declined.
+ */
+export function AssignmentDetailScreen({
+  navigation,
+  route,
+}: CoordinatorStackProps<'AssignmentDetail'>) {
+  const theme = useTheme();
+  const styles = useStyles();
+  const { t } = useI18n();
+  const f = useFormat();
+  const toast = useToast();
+  const now = useNow(60_000);
+  const reduced = useReducedMotion();
   const { assignmentId } = route.params;
 
   const [detail, setDetail] = useState<AssignmentDetail | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  // Reassign Modal State
-  const [modalVisible, setModalVisible] = useState(false);
+  const [error, setError] = useState<unknown>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [sheet, setSheet] = useState(false);
   const [drivers, setDrivers] = useState<DriverInfo[]>([]);
-  const [selectedDriverId, setSelectedDriverId] = useState<number | null>(null);
-  const [reassignNote, setReassignNote] = useState('');
-  const [reassigning, setReassigning] = useState(false);
-  const [loadingDrivers, setLoadingDrivers] = useState(false);
+  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [note, setNote] = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
-  const load = useCallback(async () => {
-    setError(null);
-    try {
-      const data = await fetchAssignmentDetail(assignmentId);
-      setDetail(data);
-    } catch (err) {
-      setError(getErrorMessage(err));
-    } finally {
-      setLoading(false);
-    }
-  }, [assignmentId]);
+  const load = useCallback(
+    async (isRefresh = false) => {
+      if (isRefresh) setRefreshing(true);
+      try {
+        setDetail(await fetchAssignmentDetail(assignmentId));
+        setError(null);
+      } catch (err) {
+        setError(err);
+      } finally {
+        setRefreshing(false);
+      }
+    },
+    [assignmentId],
+  );
 
   useFocusEffect(
     useCallback(() => {
@@ -102,464 +94,352 @@ export function AssignmentDetailScreen({ route, navigation }: Props) {
     }, [load]),
   );
 
-  const openReassignModal = useCallback(async () => {
-    setModalVisible(true);
-    setLoadingDrivers(true);
+  async function openReassign() {
+    setSelectedId(null);
+    setNote(detail?.noteToDriver ?? '');
+    setSheet(true);
     try {
-      const driverList = await fetchDrivers();
-      setDrivers(driverList);
+      setDrivers(await fetchDrivers());
     } catch (err) {
-      Alert.alert('Error', getErrorMessage(err));
-    } finally {
-      setLoadingDrivers(false);
+      toast.show({ type: 'error', title: describeError(err, t).message });
     }
-  }, []);
-
-  const handleReassign = useCallback(async () => {
-    if (!selectedDriverId || !detail) {
-      Alert.alert('Select Driver', 'Please select a driver to reassign.');
-      return;
-    }
-
-    setReassigning(true);
-    try {
-      await reassignDriver(detail.assignmentId, {
-        requestId: detail.requestId,
-        driverId: selectedDriverId,
-        noteToDriver: reassignNote.trim() || null,
-      });
-      setModalVisible(false);
-      setSelectedDriverId(null);
-      setReassignNote('');
-      Alert.alert('Success', 'Assignment reassigned to new driver!');
-      void load();
-    } catch (err) {
-      Alert.alert('Error', getErrorMessage(err));
-    } finally {
-      setReassigning(false);
-    }
-  }, [selectedDriverId, detail, reassignNote, load]);
-
-  if (loading) {
-    return (
-      <ScreenContainer>
-        <View style={styles.centre}>
-          <ActivityIndicator size="large" color={colours.accent} />
-        </View>
-      </ScreenContainer>
-    );
   }
 
+  async function confirmReassign() {
+    if (!detail || !selectedId) return;
+    const driver = drivers.find((d) => d.userId === selectedId);
+    setSubmitting(true);
+    try {
+      const next = await reassignDriver(detail.assignmentId, {
+        requestId: detail.requestId,
+        driverId: selectedId,
+        noteToDriver: note.trim() || null,
+      });
+      setSheet(false);
+      toast.show({
+        type: 'success',
+        title: t('coordinator.reassignedToast', { name: driver?.name ?? '' }),
+      });
+      navigation.replace('AssignmentDetail', { assignmentId: next.assignmentId });
+    } catch (err) {
+      toast.show({ type: 'error', title: describeError(err, t).message });
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  if (error && !detail) {
+    return (
+      <Screen edges={['left', 'right']}>
+        <ErrorState error={error} onRetry={() => void load()} />
+      </Screen>
+    );
+  }
   if (!detail) {
     return (
-      <ScreenContainer>
-        <View style={styles.centre}>
-          <Text style={styles.errorText}>Assignment not found.</Text>
-          <Button
-            label="Go Back"
-            variant="secondary"
-            onPress={() => navigation.goBack()}
-            style={styles.backButton}
-          />
+      <Screen edges={['left', 'right']}>
+        <View style={styles.content}>
+          <Skeleton width="60%" height={26} />
+          <Skeleton width="35%" height={16} style={styles.skGap} />
+          <SkeletonCard />
+          <SkeletonCard />
         </View>
-      </ScreenContainer>
+      </Screen>
     );
   }
 
-  return (
-    <ScreenContainer>
-      <ScrollView showsVerticalScrollIndicator={false}>
-        {!!error && <Text style={styles.error}>{error}</Text>}
+  const { request, driver } = detail;
+  const donor = request.listing.donor;
+  const donorName = donor.organisationName ?? donor.name;
+  const recipientName = request.recipient.organisationName ?? request.recipient.name;
+  const declined = detail.status === 'declined';
+  const history = detail.relatedAssignments.filter(
+    (a) => a.assignmentId !== detail.assignmentId,
+  );
 
-        {/* Status Header */}
-        <Card style={styles.headerCard}>
-          <View style={styles.cardTop}>
-            <Text style={styles.title} numberOfLines={1}>
-              {detail.request.listing.title}
-            </Text>
-            <StatusPill
-              label={statusLabel(detail.status)}
-              tone={statusTone(detail.status)}
+  return (
+    <Screen edges={['left', 'right']}>
+      <ScrollView
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => void load(true)}
+            tintColor={theme.colors.brand}
+            colors={[theme.colors.brand]}
+          />
+        }
+      >
+        <Animated.View entering={enterSection(0, reduced)}>
+          <View style={styles.titleRow}>
+            <AppText variant="caption" color="textSecondary">
+              {t('donor.deliveryNo', { id: detail.assignmentId })}
+            </AppText>
+            <Badge
+              label={f.status('assignment', detail.status)}
+              tone={assignmentTone[detail.status]}
+              dot
             />
           </View>
-          <Text style={styles.subText}>Assignment #{detail.assignmentId}</Text>
-        </Card>
+          <AppText variant="title" accessibilityRole="header" style={styles.title}>
+            {request.listing.title}
+          </AppText>
 
-        {/* Declined Alert Banner */}
-        {detail.status === 'declined' && (
-          <Card style={styles.declinedBanner}>
-            <Text style={styles.declinedTitle}>⚠️ Driver Declined Assignment</Text>
-            {detail.declineReason ? (
-              <Text style={styles.declinedReason}>Reason: "{detail.declineReason}"</Text>
-            ) : (
-              <Text style={styles.declinedReason}>No reason provided.</Text>
-            )}
-            <Button
-              label="Reassign Driver Now"
-              variant="primary"
-              onPress={() => void openReassignModal()}
-              style={styles.reassignBtn}
+          {declined ? (
+            <InfoBanner
+              tone="critical"
+              title={t('coordinator.declinedBy', { name: driver.name })}
+              message={
+                detail.declineReason
+                  ? t('coordinator.declineReason', { reason: detail.declineReason })
+                  : ''
+              }
+              action={
+                <Button
+                  label={t('coordinator.reassign')}
+                  icon="refresh"
+                  size="sm"
+                  inline
+                  onPress={() => void openReassign()}
+                />
+              }
+            />
+          ) : null}
+        </Animated.View>
+
+        <Animated.View entering={enterSection(1, reduced)}>
+          <SectionHeader title={t('coordinator.route')} />
+          <Card variant="flat">
+            <Stop
+              icon="mc:basket-outline"
+              label={t('coordinator.pickupFrom')}
+              name={donorName}
+              detail={`${request.listing.pickupAddress}\n${f.window(request.listing.pickupWindowStart, request.listing.pickupWindowEnd)}`}
+              phone={donor.phone}
+            />
+            <View style={styles.connector}>
+              <View style={styles.dash} />
+              <Icon name="arrow-down" size={16} color="textTertiary" />
+              <View style={styles.dash} />
+            </View>
+            <Stop
+              icon="mc:home-heart"
+              label={t('coordinator.deliverTo')}
+              name={recipientName}
+              detail={
+                request.recipient.name !== recipientName
+                  ? request.recipient.name
+                  : undefined
+              }
+              phone={request.recipient.phone}
             />
           </Card>
-        )}
 
-        {/* Driver Details */}
-        <Text style={styles.sectionTitle}>Assigned Driver</Text>
-        <Card>
-          <Text style={styles.driverName}>{detail.driver.name}</Text>
-          <Text style={styles.detailMeta}>Phone: {detail.driver.phone || 'N/A'}</Text>
-          <Text style={styles.detailMeta}>
-            Status: {detail.driver.isAvailable ? '● Available' : '○ Busy'}
-          </Text>
+          <Card variant="flat" style={styles.driver}>
+            <Avatar name={driver.name} size={44} icon="mc:truck-delivery-outline" />
+            <View style={styles.flex}>
+              <AppText variant="caption" color="textSecondary">
+                {t('donor.driver')}
+              </AppText>
+              <AppText variant="bodyStrong">{driver.name}</AppText>
+              <Badge
+                size="sm"
+                label={
+                  driver.isAvailable ? t('settings.available') : t('settings.unavailable')
+                }
+                tone={driver.isAvailable ? 'safe' : 'neutral'}
+                dot
+                style={styles.driverBadge}
+              />
+            </View>
+            <IconButton
+              icon="call"
+              variant="filled"
+              tone="olive"
+              onPress={() => call(driver.phone)}
+              accessibilityLabel={t('coordinator.callName', { name: driver.name })}
+            />
+          </Card>
+
           {detail.noteToDriver ? (
-            <Text style={styles.noteText}>
-              Note sent to driver: {detail.noteToDriver}
-            </Text>
+            <InfoBanner
+              tone="neutral"
+              icon="chatbox-ellipses-outline"
+              title={t('coordinator.noteLabel')}
+              message={detail.noteToDriver}
+            />
           ) : null}
-        </Card>
+        </Animated.View>
 
-        {/* Pickup & Dropoff Info */}
-        <Text style={styles.sectionTitle}>Delivery Details</Text>
-        <Card>
-          <Text style={styles.detailLabel}>Donor</Text>
-          <Text style={styles.detailValue}>
-            {detail.request.listing.donor.organisationName ??
-              detail.request.listing.donor.name}
-          </Text>
-          <Text style={styles.detailValue}>
-            📍 {detail.request.listing.pickupAddress}
-          </Text>
-
-          <Text style={styles.detailLabel}>Recipient</Text>
-          <Text style={styles.detailValue}>
-            {detail.request.recipient.organisationName ?? detail.request.recipient.name}
-          </Text>
-
-          <Text style={styles.detailLabel}>Items</Text>
-          {detail.request.items.map((ri) => (
-            <Text key={ri.requestItemId} style={styles.detailValue}>
-              • {ri.item.foodName} — {ri.quantityRequested} {ri.item.unit}
-            </Text>
+        <SectionHeader
+          title={t('coordinator.needs')}
+          meta={String(request.items.length)}
+        />
+        <Card variant="flat" style={styles.items}>
+          {request.items.map((line) => (
+            <View key={line.requestItemId} style={styles.line}>
+              <Icon name="ellipse" size={6} color="brand" />
+              <AppText variant="secondary" style={styles.flex} numberOfLines={1}>
+                {line.item.foodName}
+              </AppText>
+              <AppText variant="secondaryStrong">
+                {f.quantity(line.quantityRequested, line.item.unit)}
+              </AppText>
+            </View>
           ))}
         </Card>
 
-        {/* Timeline */}
-        <Text style={styles.sectionTitle}>Status Timeline</Text>
-        <Card style={styles.timelineCard}>
-          {detail.timeline.length === 0 ? (
-            <Text style={styles.emptyText}>No status events logged yet.</Text>
-          ) : (
-            detail.timeline.map((t, idx) => (
-              <View key={idx} style={styles.timelineItem}>
-                <View style={styles.timelineDot} />
-                <View style={styles.timelineContent}>
-                  <Text style={styles.timelineEvent}>{t.event}</Text>
-                  <Text style={styles.timelineTime}>{formatDateTime(t.timestamp)}</Text>
-                </View>
-              </View>
-            ))
-          )}
-        </Card>
+        <SectionHeader title={t('coordinator.progress')} />
+        <Timeline steps={assignmentSteps(detail, t, f)} />
 
-        {/* Related Reassignments */}
-        {detail.relatedAssignments.length > 0 && (
+        {history.length > 0 ? (
           <>
-            <Text style={styles.sectionTitle}>Assignment History</Text>
-            <Card>
-              {detail.relatedAssignments.map((rel) => (
-                <View key={rel.assignmentId} style={styles.historyRow}>
-                  <Text style={styles.historyText}>
-                    Driver: {rel.driver.name} ({statusLabel(rel.status)})
-                  </Text>
-                  <Text style={styles.historyTime}>{formatDateTime(rel.assignedAt)}</Text>
-                  {rel.declineReason ? (
-                    <Text style={styles.historyDecline}>
-                      Declined: "{rel.declineReason}"
-                    </Text>
+            <SectionHeader
+              title={t('coordinator.history')}
+              meta={String(history.length)}
+            />
+            <AppText variant="caption" color="textSecondary" style={styles.historyHint}>
+              {t('coordinator.historyHint')}
+            </AppText>
+            {history.map((h) => (
+              <Card key={h.assignmentId} variant="flat" style={styles.historyRow}>
+                <Avatar name={h.driver.name} size={36} />
+                <View style={styles.flex}>
+                  <AppText variant="secondaryStrong">{h.driver.name}</AppText>
+                  <AppText variant="caption" color="textSecondary">
+                    {t('coordinator.assignedWhen', {
+                      when: f.relative(h.assignedAt, now),
+                    })}
+                  </AppText>
+                  {h.declineReason ? (
+                    <AppText variant="caption" color="criticalText">
+                      {t('coordinator.declineReason', { reason: h.declineReason })}
+                    </AppText>
                   ) : null}
                 </View>
-              ))}
-            </Card>
+                <Badge
+                  size="sm"
+                  label={f.status('assignment', h.status)}
+                  tone={assignmentTone[h.status]}
+                />
+              </Card>
+            ))}
           </>
-        )}
+        ) : null}
       </ScrollView>
 
-      {/* Reassign Modal */}
-      <Modal visible={modalVisible} animationType="slide" transparent>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Reassign Driver</Text>
-            <Text style={styles.modalSub}>
-              Select a new driver to take over this delivery:
-            </Text>
-
-            {loadingDrivers ? (
-              <ActivityIndicator
-                size="small"
-                color={colours.accent}
-                style={{ marginVertical: spacing.md }}
-              />
-            ) : drivers.length === 0 ? (
-              <Text style={styles.emptyText}>No available drivers currently.</Text>
-            ) : (
-              <ScrollView style={{ maxHeight: 200 }}>
-                {drivers.map((drv) => {
-                  const selected = selectedDriverId === drv.userId;
-                  return (
-                    <TouchableOpacity
-                      key={drv.userId}
-                      style={[styles.driverRow, selected && styles.driverRowSelected]}
-                      onPress={() => setSelectedDriverId(drv.userId)}
-                    >
-                      <View style={styles.radio}>
-                        {selected && <View style={styles.radioFill} />}
-                      </View>
-                      <View>
-                        <Text style={styles.driverRowName}>{drv.name}</Text>
-                        <Text style={styles.driverRowMeta}>
-                          {drv.isAvailable ? 'Available' : 'Busy'} · {drv.phone}
-                        </Text>
-                      </View>
-                    </TouchableOpacity>
-                  );
-                })}
-              </ScrollView>
-            )}
-
-            <Text style={styles.detailLabel}>Note to Driver (optional)</Text>
-            <TextInput
-              style={styles.modalInput}
-              placeholder="e.g. Urgent reassignment for pickup"
-              placeholderTextColor={colours.textSecondary}
-              value={reassignNote}
-              onChangeText={setReassignNote}
-            />
-
-            <View style={styles.modalActions}>
-              <Button
-                label="Cancel"
-                variant="secondary"
-                onPress={() => setModalVisible(false)}
-                style={{ flex: 1 }}
-              />
-              <Button
-                label={reassigning ? 'Reassigning…' : 'Confirm'}
-                variant="primary"
-                onPress={() => void handleReassign()}
-                style={{ flex: 1 }}
-              />
-            </View>
-          </View>
-        </View>
-      </Modal>
-    </ScreenContainer>
+      <BottomSheet
+        visible={sheet}
+        onClose={() => setSheet(false)}
+        dismissible={!submitting}
+        title={t('coordinator.reassignTitle')}
+        scrollable
+        footer={
+          <Button
+            label={t('coordinator.reassignConfirm')}
+            icon="refresh"
+            onPress={() => void confirmReassign()}
+            loading={submitting}
+            disabled={!selectedId}
+          />
+        }
+      >
+        <DriverPicker
+          drivers={drivers}
+          selectedId={selectedId}
+          onSelect={setSelectedId}
+          excludeId={driver.userId}
+        />
+        <TextField
+          label={t('coordinator.noteLabel')}
+          optional
+          value={note}
+          onChangeText={setNote}
+          placeholder={t('coordinator.notePlaceholder')}
+          multiline
+          maxLength={1000}
+          containerStyle={styles.note}
+        />
+      </BottomSheet>
+    </Screen>
   );
 }
 
-const styles = StyleSheet.create({
-  centre: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  error: {
-    color: colours.critical,
-    fontSize: fontSize.secondary,
-    marginBottom: spacing.sm,
-  },
-  errorText: {
-    color: colours.textSecondary,
-    fontSize: fontSize.body,
-    marginBottom: spacing.md,
-  },
-  backButton: { alignSelf: 'center' },
-  headerCard: { marginBottom: spacing.md },
-  cardTop: {
+function Stop({
+  icon,
+  label,
+  name,
+  detail,
+  phone,
+}: {
+  icon: 'mc:basket-outline' | 'mc:home-heart';
+  label: string;
+  name: string;
+  detail?: string;
+  phone: string;
+}) {
+  const styles = useStyles();
+  const { t } = useI18n();
+  return (
+    <View style={styles.stop}>
+      <View style={styles.stopIcon}>
+        <Icon name={icon} size={20} color="brandText" />
+      </View>
+      <View style={styles.flex}>
+        <AppText variant="caption" color="textSecondary">
+          {label}
+        </AppText>
+        <AppText variant="bodyStrong">{name}</AppText>
+        {detail ? (
+          <AppText variant="caption" color="textSecondary">
+            {detail}
+          </AppText>
+        ) : null}
+      </View>
+      <IconButton
+        icon="call-outline"
+        variant="tonal"
+        tone="brand"
+        size="sm"
+        onPress={() => call(phone)}
+        accessibilityLabel={t('coordinator.callName', { name })}
+      />
+    </View>
+  );
+}
+
+const useStyles = makeStyles((t) => ({
+  content: { padding: t.layout.screenPadding, paddingBottom: t.spacing.xxl },
+  flex: { flex: 1 },
+  skGap: { marginTop: t.spacing.sm, marginBottom: t.spacing.lg },
+  titleRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: spacing.sm,
   },
-  title: {
-    fontSize: fontSize.heading,
-    fontWeight: fontWeight.semibold,
-    color: colours.textPrimary,
-    flexShrink: 1,
+  title: { marginTop: t.spacing.xs, marginBottom: t.spacing.md },
+  stop: { flexDirection: 'row', alignItems: 'flex-start', gap: t.spacing.sm + 4 },
+  stopIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: t.colors.brandSoft,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  subText: {
-    fontSize: fontSize.secondary,
-    color: colours.textSecondary,
-    marginTop: 4,
-  },
-  declinedBanner: {
-    backgroundColor: '#FFF5F5',
-    borderColor: colours.critical,
-    borderWidth: 1,
-    marginBottom: spacing.md,
-  },
-  declinedTitle: {
-    fontSize: fontSize.body,
-    fontWeight: fontWeight.semibold,
-    color: colours.critical,
-    marginBottom: 4,
-  },
-  declinedReason: {
-    fontSize: fontSize.secondary,
-    color: colours.textPrimary,
-    fontStyle: 'italic',
-    marginBottom: spacing.sm,
-  },
-  reassignBtn: { marginTop: spacing.xs },
-  sectionTitle: {
-    fontSize: fontSize.heading,
-    fontWeight: fontWeight.semibold,
-    color: colours.textPrimary,
-    marginTop: spacing.md,
-    marginBottom: spacing.xs,
-  },
-  driverName: {
-    fontSize: fontSize.body,
-    fontWeight: fontWeight.semibold,
-    color: colours.textPrimary,
-  },
-  detailMeta: {
-    fontSize: fontSize.secondary,
-    color: colours.textSecondary,
-    marginTop: 2,
-  },
-  noteText: {
-    fontSize: fontSize.secondary,
-    color: colours.textPrimary,
-    fontStyle: 'italic',
-    marginTop: spacing.xs,
-  },
-  detailLabel: {
-    fontSize: fontSize.label,
-    fontWeight: fontWeight.semibold,
-    color: colours.textSecondary,
-    marginTop: spacing.sm,
-  },
-  detailValue: {
-    fontSize: fontSize.secondary,
-    color: colours.textPrimary,
-    lineHeight: 20,
-  },
-  timelineCard: { paddingVertical: spacing.sm },
-  timelineItem: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    paddingVertical: spacing.xs,
-    gap: spacing.sm,
-  },
-  timelineDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: colours.accent,
-    marginTop: 4,
-  },
-  timelineContent: { flex: 1 },
-  timelineEvent: {
-    fontSize: fontSize.body,
-    color: colours.textPrimary,
-    fontWeight: fontWeight.medium,
-  },
-  timelineTime: {
-    fontSize: fontSize.label,
-    color: colours.textSecondary,
-  },
-  emptyText: {
-    fontSize: fontSize.secondary,
-    color: colours.textSecondary,
-    fontStyle: 'italic',
-  },
+  connector: { alignItems: 'center', width: 40, paddingVertical: t.spacing.xs, gap: 2 },
+  dash: { width: 2, height: 8, borderRadius: 1, backgroundColor: t.colors.border },
+  driver: { flexDirection: 'row', alignItems: 'center', gap: t.spacing.sm + 4 },
+  driverBadge: { marginTop: 4 },
+  items: { gap: t.spacing.xs + 2 },
+  line: { flexDirection: 'row', alignItems: 'center', gap: t.spacing.sm },
+  historyHint: { marginTop: -t.spacing.sm, marginBottom: t.spacing.sm },
   historyRow: {
-    paddingVertical: spacing.xs,
-    borderBottomWidth: 1,
-    borderBottomColor: colours.border,
-  },
-  historyText: {
-    fontSize: fontSize.secondary,
-    color: colours.textPrimary,
-    fontWeight: fontWeight.medium,
-  },
-  historyTime: {
-    fontSize: fontSize.label,
-    color: colours.textSecondary,
-  },
-  historyDecline: {
-    fontSize: fontSize.label,
-    color: colours.critical,
-    fontStyle: 'italic',
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'center',
-    padding: spacing.md,
-  },
-  modalContent: {
-    backgroundColor: colours.background,
-    borderRadius: spacing.md,
-    padding: spacing.md,
-  },
-  modalTitle: {
-    fontSize: fontSize.heading,
-    fontWeight: fontWeight.semibold,
-    color: colours.textPrimary,
-  },
-  modalSub: {
-    fontSize: fontSize.secondary,
-    color: colours.textSecondary,
-    marginBottom: spacing.sm,
-  },
-  driverRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: spacing.sm,
-    borderWidth: 1,
-    borderColor: colours.border,
-    borderRadius: spacing.xs,
-    marginBottom: spacing.xs,
-    gap: spacing.sm,
+    gap: t.spacing.sm + 4,
+    marginBottom: t.spacing.sm,
   },
-  driverRowSelected: {
-    borderColor: colours.accent,
-    backgroundColor: colours.surface,
-  },
-  radio: {
-    width: 16,
-    height: 16,
-    borderRadius: 8,
-    borderWidth: 2,
-    borderColor: colours.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  radioFill: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: colours.accent,
-  },
-  driverRowName: {
-    fontSize: fontSize.secondary,
-    fontWeight: fontWeight.semibold,
-    color: colours.textPrimary,
-  },
-  driverRowMeta: {
-    fontSize: fontSize.label,
-    color: colours.textSecondary,
-  },
-  modalInput: {
-    backgroundColor: colours.surface,
-    borderWidth: 1,
-    borderColor: colours.border,
-    borderRadius: spacing.xs,
-    padding: spacing.sm,
-    color: colours.textPrimary,
-    fontSize: fontSize.secondary,
-    marginVertical: spacing.sm,
-  },
-  modalActions: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-    marginTop: spacing.sm,
-  },
-});
+  note: { marginTop: t.spacing.md },
+}));

@@ -1,98 +1,89 @@
-import React, { useCallback, useState } from 'react';
-import {
-  ActivityIndicator,
-  FlatList,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from 'react-native';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { RefreshControl, View } from 'react-native';
+import Animated from 'react-native-reanimated';
 import { useFocusEffect } from '@react-navigation/native';
-import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-
-import { Card, EmptyState, ScreenContainer, StatusPill } from '../../components';
+import {
+  AppText,
+  Avatar,
+  Badge,
+  Button,
+  Card,
+  Chip,
+  ChipRow,
+  EmptyState,
+  ErrorState,
+  Icon,
+  LargeTitle,
+  Screen,
+  SkeletonList,
+  Timeline,
+  TopBar,
+  useScrollY,
+} from '../../components';
 import { fetchAssignments } from '../../api/assignments.api';
-import { getErrorMessage } from '../../api/client';
-import { colours, fontSize, fontWeight, spacing } from '../../constants/theme';
-import { formatDateTime } from '../../utils/datetime';
-import type { CoordinatorAssignment, AssignmentStatus } from '../../types/assignment';
+import { useNow } from '../../hooks/useNow';
+import { useI18n } from '../../i18n';
+import { useFormat } from '../../i18n/format';
+import { makeStyles, useTheme } from '../../theme';
+import { enterListItem, useReducedMotion } from '../../theme/animations';
+import type { AssignmentStatus, CoordinatorAssignment } from '../../types/assignment';
+import { compactSteps } from '../../utils/assignmentTimeline';
+import { assignmentTone } from '../../utils/status';
 import type { CoordinatorTabProps } from '../../navigation/types';
 
-type Props = CoordinatorTabProps<'AssignmentsList'>;
-
-const FILTER_OPTIONS: { label: string; value?: AssignmentStatus }[] = [
-  { label: 'All' },
-  { label: 'Pending Driver', value: 'pending_driver' },
-  { label: 'Declined', value: 'declined' },
-  { label: 'Accepted', value: 'accepted' },
-  { label: 'In Transit', value: 'in_transit' },
-  { label: 'Completed', value: 'completed' },
-  { label: 'Cancelled', value: 'cancelled' },
+type Filter = 'all' | AssignmentStatus;
+const FILTERS: Filter[] = [
+  'all',
+  'declined',
+  'pending_driver',
+  'accepted',
+  'in_transit',
+  'completed',
+  'cancelled',
 ];
 
-function statusTone(
-  status: AssignmentStatus,
-): 'safe' | 'urgent' | 'critical' | 'neutral' {
-  switch (status) {
-    case 'pending_driver':
-      return 'urgent';
-    case 'accepted':
-    case 'in_transit':
-      return 'safe';
-    case 'completed':
-      return 'neutral';
-    case 'declined':
-    case 'cancelled':
-      return 'critical';
-    default:
-      return 'neutral';
-  }
-}
+/**
+ * Every delivery and where it is.
+ *
+ * A declined delivery is the one that needs the coordinator, so it is
+ * listed with its filter first and its card offers "Reassign" directly. The
+ * tiles on the home tab open this list already filtered.
+ */
+export function AssignmentsListScreen({
+  navigation,
+  route,
+}: CoordinatorTabProps<'AssignmentsList'>) {
+  const theme = useTheme();
+  const styles = useStyles();
+  const { t } = useI18n();
+  const f = useFormat();
+  const now = useNow(60_000);
+  const reduced = useReducedMotion();
+  const { scrollY, onScroll } = useScrollY();
 
-function statusLabel(status: AssignmentStatus): string {
-  switch (status) {
-    case 'pending_driver':
-      return 'Awaiting Driver';
-    case 'accepted':
-      return 'Driver Accepted';
-    case 'in_transit':
-      return 'In Transit';
-    case 'completed':
-      return 'Completed';
-    case 'declined':
-      return 'Driver Declined';
-    case 'cancelled':
-      return 'Cancelled';
-    default:
-      return status;
-  }
-}
-
-export function AssignmentsListScreen({ navigation }: Props) {
   const [assignments, setAssignments] = useState<CoordinatorAssignment[]>([]);
-  const [selectedFilter, setSelectedFilter] = useState<AssignmentStatus | undefined>(
-    undefined,
-  );
+  const [filter, setFilter] = useState<Filter>(route.params?.status ?? 'all');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<unknown>(null);
 
-  const load = useCallback(
-    async (isRefresh = false) => {
-      if (isRefresh) setRefreshing(true);
+  // A tile on the home tab can open this list with a status already chosen.
+  useEffect(() => {
+    if (route.params?.status) setFilter(route.params.status);
+  }, [route.params?.status]);
+
+  const load = useCallback(async (isRefresh = false) => {
+    if (isRefresh) setRefreshing(true);
+    try {
+      setAssignments(await fetchAssignments());
       setError(null);
-      try {
-        setAssignments(await fetchAssignments(selectedFilter));
-      } catch (err) {
-        setError(getErrorMessage(err));
-      } finally {
-        setLoading(false);
-        setRefreshing(false);
-      }
-    },
-    [selectedFilter],
-  );
+    } catch (err) {
+      setError(err);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
 
   useFocusEffect(
     useCallback(() => {
@@ -100,247 +91,219 @@ export function AssignmentsListScreen({ navigation }: Props) {
     }, [load]),
   );
 
-  const handleFilterChange = (status?: AssignmentStatus) => {
-    setSelectedFilter(status);
-    setLoading(true);
-  };
+  const counts = useMemo(() => {
+    const c = { all: assignments.length } as Record<Filter, number>;
+    FILTERS.forEach((key) => {
+      if (key !== 'all') c[key] = assignments.filter((a) => a.status === key).length;
+    });
+    return c;
+  }, [assignments]);
 
-  if (loading && !refreshing) {
-    return (
-      <ScreenContainer>
-        <View style={styles.centre}>
-          <ActivityIndicator size="large" color={colours.accent} />
-        </View>
-      </ScreenContainer>
+  const visible =
+    filter === 'all' ? assignments : assignments.filter((a) => a.status === filter);
+
+  const header = (
+    <View>
+      <LargeTitle
+        title={t('coordinator.deliveriesTitle')}
+        subtitle={t('coordinator.deliveriesSubtitle')}
+        scrollY={scrollY}
+      />
+      {!loading && !error && assignments.length > 0 ? (
+        <ChipRow style={styles.chips}>
+          {FILTERS.filter(
+            (key) => key === 'all' || counts[key] > 0 || key === filter,
+          ).map((key) => (
+            <Chip
+              key={key}
+              label={key === 'all' ? t('common.all') : f.status('assignment', key)}
+              count={counts[key]}
+              tone={key === 'all' ? 'brand' : assignmentTone[key]}
+              selected={filter === key}
+              onPress={() => setFilter(key)}
+            />
+          ))}
+        </ChipRow>
+      ) : null}
+    </View>
+  );
+
+  let empty: React.ReactElement;
+  if (loading) empty = <SkeletonList count={3} />;
+  else if (error) empty = <ErrorState error={error} onRetry={() => void load()} />;
+  else if (assignments.length === 0)
+    empty = (
+      <EmptyState
+        illustration="deliverFood"
+        title={t('coordinator.deliveriesEmptyTitle')}
+        message={t('coordinator.deliveriesEmptyBody')}
+      />
     );
-  }
+  else
+    empty = (
+      <EmptyState
+        compact
+        illustration="allClear"
+        title={t('coordinator.deliveriesFilterEmpty')}
+      />
+    );
 
   return (
-    <ScreenContainer style={styles.container}>
-      <Text style={styles.heading}>Assignments</Text>
-
-      {/* Filter Chips */}
-      <View style={styles.filterWrapper}>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.filterScroll}
-        >
-          {FILTER_OPTIONS.map((opt) => {
-            const isActive = selectedFilter === opt.value;
-            return (
-              <TouchableOpacity
-                key={opt.label}
-                style={[styles.chip, isActive && styles.chipActive]}
-                onPress={() => handleFilterChange(opt.value)}
-                activeOpacity={0.7}
-              >
-                <Text style={[styles.chipText, isActive && styles.chipTextActive]}>
-                  {opt.label}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
-      </View>
-
-      {!!error && <Text style={styles.error}>{error}</Text>}
-
-      <FlatList
-        data={assignments}
-        keyExtractor={(item) => String(item.assignmentId)}
-        refreshing={refreshing}
-        onRefresh={() => void load(true)}
+    <Screen>
+      <TopBar title={t('coordinator.deliveriesTitle')} scrollY={scrollY} />
+      <Animated.FlatList
+        data={loading || error ? [] : visible}
+        keyExtractor={(a) => String(a.assignmentId)}
+        onScroll={onScroll}
+        scrollEventThrottle={16}
+        ListHeaderComponent={header}
+        ListEmptyComponent={empty}
+        contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={assignments.length === 0 ? styles.emptyWrap : undefined}
-        ListEmptyComponent={
-          <EmptyState
-            title="No assignments found"
-            message={
-              selectedFilter
-                ? `No assignments with status "${statusLabel(selectedFilter)}".`
-                : 'Once you assign a driver to a request, it will appear here.'
-            }
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => void load(true)}
+            tintColor={theme.colors.brand}
+            colors={[theme.colors.brand]}
           />
         }
-        renderItem={({ item }) => {
-          const needsAttention =
-            item.status === 'declined' || item.status === 'pending_driver';
-
-          return (
-            <TouchableOpacity
-              activeOpacity={0.8}
-              onPress={() =>
+        renderItem={({ item, index }) => (
+          <Animated.View entering={enterListItem(index, reduced)}>
+            <DeliveryCard
+              assignment={item}
+              now={now}
+              onOpen={() =>
                 navigation.navigate('AssignmentDetail', {
                   assignmentId: item.assignmentId,
                 })
               }
-            >
-              <Card
-                style={[
-                  styles.card,
-                  item.status === 'declined' && styles.cardDeclined,
-                  item.status === 'pending_driver' && styles.cardPending,
-                ]}
-              >
-                {needsAttention && (
-                  <View style={styles.attentionBanner}>
-                    <Text style={styles.attentionText}>
-                      {item.status === 'declined'
-                        ? '⚠️ Driver declined - Action required'
-                        : '⏳ Awaiting driver confirmation'}
-                    </Text>
-                  </View>
-                )}
-
-                <View style={styles.cardTop}>
-                  <Text style={styles.cardTitle} numberOfLines={1}>
-                    {item.request.listing.title}
-                  </Text>
-                  <StatusPill
-                    label={statusLabel(item.status)}
-                    tone={statusTone(item.status)}
-                  />
-                </View>
-
-                <Text style={styles.cardMeta} numberOfLines={1}>
-                  Driver: {item.driver.name}{' '}
-                  {item.driver.isAvailable ? '(Available)' : '(Busy)'}
-                </Text>
-                <Text style={styles.cardMeta} numberOfLines={1}>
-                  Recipient:{' '}
-                  {item.request.recipient.organisationName ?? item.request.recipient.name}
-                </Text>
-                <Text style={styles.cardMeta} numberOfLines={1}>
-                  Donor:{' '}
-                  {item.request.listing.donor.organisationName ??
-                    item.request.listing.donor.name}
-                </Text>
-                <Text style={styles.cardMeta} numberOfLines={1}>
-                  Pickup: {formatDateTime(item.request.listing.pickupWindowStart)}
-                </Text>
-
-                {item.declineReason && (
-                  <Text style={styles.declineReason} numberOfLines={2}>
-                    Decline Reason: "{item.declineReason}"
-                  </Text>
-                )}
-
-                {item.noteToDriver ? (
-                  <Text style={styles.note} numberOfLines={1}>
-                    Note: {item.noteToDriver}
-                  </Text>
-                ) : null}
-
-                <Text style={styles.tapPrompt}>Tap to view details & timeline →</Text>
-              </Card>
-            </TouchableOpacity>
-          );
-        }}
+            />
+          </Animated.View>
+        )}
       />
-    </ScreenContainer>
+    </Screen>
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1 },
-  centre: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  heading: {
-    fontSize: fontSize.heading,
-    fontWeight: fontWeight.semibold,
-    color: colours.textPrimary,
-    marginBottom: spacing.xs,
+function DeliveryCard({
+  assignment,
+  now,
+  onOpen,
+}: {
+  assignment: CoordinatorAssignment;
+  now: number;
+  onOpen: () => void;
+}) {
+  const styles = useStyles();
+  const { t } = useI18n();
+  const f = useFormat();
+  const recipient =
+    assignment.request.recipient.organisationName ?? assignment.request.recipient.name;
+  const declined = assignment.status === 'declined';
+
+  return (
+    <Card
+      onPress={onOpen}
+      variant={declined ? 'flat' : 'raised'}
+      style={declined ? styles.declined : undefined}
+      accessibilityLabel={`${t('donor.deliveryNo', { id: assignment.assignmentId })}, ${assignment.request.listing.title}, ${f.status('assignment', assignment.status)}`}
+      accessibilityHint={t('common.viewDetails')}
+    >
+      <View style={styles.head}>
+        <View style={styles.flex}>
+          <AppText variant="caption" color="textSecondary">
+            {t('donor.deliveryNo', { id: assignment.assignmentId })}
+          </AppText>
+          <AppText variant="bodyStrong" numberOfLines={1}>
+            {assignment.request.listing.title}
+          </AppText>
+        </View>
+        <Badge
+          label={f.status('assignment', assignment.status)}
+          tone={assignmentTone[assignment.status]}
+          dot={
+            assignment.status === 'in_transit' || assignment.status === 'pending_driver'
+          }
+          size="sm"
+        />
+      </View>
+
+      <Timeline
+        steps={compactSteps(assignment)}
+        orientation="horizontal"
+        style={styles.track}
+      />
+
+      <View style={styles.people}>
+        <View style={styles.person}>
+          <Avatar
+            name={assignment.driver.name}
+            size={28}
+            icon="mc:truck-delivery-outline"
+          />
+          <AppText variant="caption" numberOfLines={1} style={styles.flex}>
+            {assignment.driver.name}
+          </AppText>
+        </View>
+        <Icon name="arrow-forward" size={14} color="textTertiary" />
+        <View style={styles.person}>
+          <Avatar name={recipient} size={28} icon="mc:home-heart" />
+          <AppText variant="caption" numberOfLines={1} style={styles.flex}>
+            {recipient}
+          </AppText>
+        </View>
+      </View>
+
+      {declined ? (
+        <View style={styles.declineRow}>
+          <AppText
+            variant="caption"
+            color="criticalText"
+            style={styles.flex}
+            numberOfLines={2}
+          >
+            {assignment.declineReason
+              ? t('coordinator.declineReason', { reason: assignment.declineReason })
+              : t('coordinator.declinedBy', { name: assignment.driver.name })}
+          </AppText>
+          <Button
+            label={t('coordinator.reassign')}
+            size="sm"
+            inline
+            icon="refresh"
+            onPress={onOpen}
+          />
+        </View>
+      ) : (
+        <AppText variant="caption" color="textTertiary" style={styles.when}>
+          {t('coordinator.assignedWhen', {
+            when: f.relative(assignment.assignedAt, now),
+          })}
+        </AppText>
+      )}
+    </Card>
+  );
+}
+
+const useStyles = makeStyles((t) => ({
+  content: {
+    paddingHorizontal: t.layout.screenPadding,
+    paddingBottom: t.spacing.xxl,
+    flexGrow: 1,
   },
-  filterWrapper: {
-    marginBottom: spacing.sm,
-  },
-  filterScroll: {
-    gap: spacing.xs,
-    paddingVertical: spacing.xs,
-  },
-  chip: {
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 6,
-    borderRadius: 16,
-    backgroundColor: colours.surface,
-    borderWidth: 1,
-    borderColor: colours.border,
-  },
-  chipActive: {
-    backgroundColor: colours.accent,
-    borderColor: colours.accent,
-  },
-  chipText: {
-    fontSize: fontSize.label,
-    color: colours.textSecondary,
-    fontWeight: fontWeight.medium,
-  },
-  chipTextActive: {
-    color: '#FFFFFF',
-    fontWeight: fontWeight.semibold,
-  },
-  error: {
-    color: colours.critical,
-    fontSize: fontSize.secondary,
-    marginBottom: spacing.sm,
-  },
-  emptyWrap: { flexGrow: 1, justifyContent: 'center' },
-  card: {
-    marginBottom: spacing.sm,
-  },
-  cardDeclined: {
-    borderColor: colours.critical,
-    borderWidth: 1.5,
-    backgroundColor: '#FFF8F8',
-  },
-  cardPending: {
-    borderColor: colours.urgent,
-    borderWidth: 1.5,
-  },
-  attentionBanner: {
-    marginBottom: spacing.xs,
-    paddingVertical: 2,
-  },
-  attentionText: {
-    fontSize: fontSize.label,
-    fontWeight: fontWeight.semibold,
-    color: colours.critical,
-  },
-  cardTop: {
+  chips: { marginBottom: t.spacing.md },
+  flex: { flex: 1 },
+  declined: { borderColor: t.colors.critical, backgroundColor: t.colors.criticalSoft },
+  head: { flexDirection: 'row', alignItems: 'flex-start', gap: t.spacing.sm },
+  track: { marginVertical: t.spacing.md, paddingHorizontal: t.spacing.xs },
+  people: { flexDirection: 'row', alignItems: 'center', gap: t.spacing.sm },
+  person: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: t.spacing.xs + 2 },
+  declineRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacing.sm,
-    marginBottom: spacing.xs,
+    gap: t.spacing.sm,
+    marginTop: t.spacing.sm + 4,
   },
-  cardTitle: {
-    fontSize: fontSize.body,
-    fontWeight: fontWeight.semibold,
-    color: colours.textPrimary,
-    flexShrink: 1,
-  },
-  cardMeta: {
-    fontSize: fontSize.secondary,
-    color: colours.textSecondary,
-    lineHeight: 20,
-  },
-  declineReason: {
-    fontSize: fontSize.secondary,
-    color: colours.critical,
-    fontStyle: 'italic',
-    marginTop: spacing.xs,
-  },
-  note: {
-    fontSize: fontSize.secondary,
-    color: colours.textPrimary,
-    fontStyle: 'italic',
-    marginTop: spacing.xs,
-  },
-  tapPrompt: {
-    fontSize: fontSize.label,
-    color: colours.accent,
-    fontWeight: fontWeight.medium,
-    marginTop: spacing.xs,
-    textAlign: 'right',
-  },
-});
+  when: { marginTop: t.spacing.sm + 4 },
+}));
