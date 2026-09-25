@@ -5,6 +5,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 
 import { useAuth } from '../context/AuthContext';
+import { useTheme } from '../theme';
 import { colours, fontSize, fontWeight } from '../constants/theme';
 
 import { LoginScreen } from '../screens/auth/LoginScreen';
@@ -314,9 +315,10 @@ function LoadingScreen() {
 
 export function RootNavigator() {
   const { user, isRestoring } = useAuth();
+  const theme = useTheme();
 
   return (
-    <NavigationContainer>
+    <NavigationContainer theme={theme.navigation}>
       {isRestoring ? (
         // Held here until the stored token has been checked, so the app does
         // not flash the login screen and then jump to a role stack.

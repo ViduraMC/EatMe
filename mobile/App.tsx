@@ -1,24 +1,96 @@
-import React from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
+import { StyleSheet } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
+import * as SplashScreen from 'expo-splash-screen';
+import { useFonts } from 'expo-font';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AuthProvider } from './src/context/AuthContext';
 import { RootNavigator } from './src/navigation/RootNavigator';
+import { LanguageProvider, isLanguage, type Language } from './src/i18n';
+import {
+  ThemeProvider,
+  fontAssets,
+  isThemePreference,
+  useTheme,
+  type ThemePreference,
+} from './src/theme';
+import { readPref } from './src/utils/preferences';
+
+// Keep the native splash up until fonts and saved preferences are ready, so
+// the first frame is already in the right language, theme and typeface.
+SplashScreen.preventAutoHideAsync().catch(() => {
+  // Already hidden, e.g. after a fast refresh. Nothing to do.
+});
+
+interface Boot {
+  language: Language;
+  theme: ThemePreference;
+}
+
+function ThemedStatusBar() {
+  const theme = useTheme();
+  return <StatusBar style={theme.isDark ? 'light' : 'dark'} />;
+}
 
 /**
- * Provider order matters.
+ * Provider order matters:
  *
- * SafeAreaProvider must wrap everything, because ScreenContainer reads the
- * insets from it. AuthProvider must sit above RootNavigator, because the
- * navigator decides which stack to mount from the user it reads out of the
- * auth context.
+ * - GestureHandlerRootView wraps everything so sheets and slide-to-confirm
+ *   can receive gestures anywhere on screen.
+ * - LanguageProvider sits above ThemeProvider, because the theme picks the
+ *   Sinhala or Latin typeface from the current language.
+ * - AuthProvider sits above RootNavigator, which mounts a stack per role.
  */
 export default function App() {
+  const [fontsLoaded, fontError] = useFonts(fontAssets);
+  const [boot, setBoot] = useState<Boot | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const [language, theme] = await Promise.all([
+        readPref('language'),
+        readPref('theme'),
+      ]);
+      if (!cancelled) {
+        setBoot({
+          language: isLanguage(language) ? language : 'en',
+          theme: isThemePreference(theme) ? theme : 'system',
+        });
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const ready = (fontsLoaded || !!fontError) && boot !== null;
+
+  const onLayout = useCallback(() => {
+    if (ready) void SplashScreen.hideAsync();
+  }, [ready]);
+
+  if (!ready) {
+    return null;
+  }
+
   return (
-    <SafeAreaProvider>
-      <AuthProvider>
-        <StatusBar style="dark" />
-        <RootNavigator />
-      </AuthProvider>
-    </SafeAreaProvider>
+    <GestureHandlerRootView style={styles.root} onLayout={onLayout}>
+      <SafeAreaProvider>
+        <LanguageProvider initialLanguage={boot.language}>
+          <ThemeProvider initialPreference={boot.theme}>
+            <AuthProvider>
+              <ThemedStatusBar />
+              <RootNavigator />
+            </AuthProvider>
+          </ThemeProvider>
+        </LanguageProvider>
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
   );
 }
+
+const styles = StyleSheet.create({
+  root: { flex: 1 },
+});
