@@ -1,39 +1,85 @@
 import React, { useCallback, useState } from 'react';
-import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import { RefreshControl, ScrollView, View } from 'react-native';
+import Animated from 'react-native-reanimated';
 import { useFocusEffect } from '@react-navigation/native';
-import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-
-import { Button, Card, ScreenContainer, StatusPill } from '../../components';
+import {
+  AppText,
+  Avatar,
+  Badge,
+  Button,
+  Card,
+  ErrorState,
+  FreshnessRing,
+  Icon,
+  InfoBanner,
+  Screen,
+  SectionHeader,
+  Skeleton,
+  SkeletonCard,
+  UrgencyBadge,
+} from '../../components';
 import { fetchListing } from '../../api/donations.api';
-import { getErrorMessage } from '../../api/client';
-import { colours, fontSize, fontWeight, spacing } from '../../constants/theme';
-import { formatDateTime, formatStatus, formatTimeUntil } from '../../utils/datetime';
+import { fetchMyRequests } from '../../api/requests.api';
+import { useNow } from '../../hooks/useNow';
+import { useI18n } from '../../i18n';
+import { useFormat } from '../../i18n/format';
+import { makeStyles, useTheme } from '../../theme';
+import { enterListItem, enterSection, useReducedMotion } from '../../theme/animations';
 import type { DonationListing } from '../../types/donation';
-import type { RecipientStackParamList } from '../../navigation/types';
+import type { DonationRequest } from '../../types/request';
+import { freshnessFraction } from '../../utils/freshness';
+import { isActiveListing, itemIcon } from '../../utils/listing';
+import type { RecipientStackProps } from '../../navigation/types';
 
-type ListingDetailParamList = RecipientStackParamList & {
-  ListingDetail: { listingId: number };
-  CreateRequest: { listingId: number };
-};
-
-type Props = NativeStackScreenProps<ListingDetailParamList, 'ListingDetail'>;
-
-export function ListingDetailScreen({ navigation, route }: Props) {
+/**
+ * One listing, before a recipient requests from it.
+ *
+ * If this recipient has already asked for this listing, that is said first,
+ * with the request's status. It stops a busy person sending a duplicate
+ * request because they forgot they had already asked this morning.
+ */
+export function ListingDetailScreen({
+  navigation,
+  route,
+}: RecipientStackProps<'ListingDetail'>) {
+  const theme = useTheme();
+  const styles = useStyles();
+  const { t } = useI18n();
+  const f = useFormat();
+  const now = useNow();
+  const reduced = useReducedMotion();
   const { listingId } = route.params;
-  const [listing, setListing] = useState<DonationListing | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    setError(null);
-    try {
-      setListing(await fetchListing(listingId));
-    } catch (err) {
-      setError(getErrorMessage(err));
-    } finally {
-      setLoading(false);
-    }
-  }, [listingId]);
+  const [listing, setListing] = useState<DonationListing | null>(null);
+  const [existing, setExisting] = useState<DonationRequest | null>(null);
+  const [error, setError] = useState<unknown>(null);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const load = useCallback(
+    async (isRefresh = false) => {
+      if (isRefresh) setRefreshing(true);
+      try {
+        const [found, mine] = await Promise.all([
+          fetchListing(listingId),
+          fetchMyRequests(),
+        ]);
+        setListing(found);
+        setExisting(
+          mine.find(
+            (r) =>
+              r.listingId === listingId &&
+              (r.status === 'pending' || r.status === 'accepted'),
+          ) ?? null,
+        );
+        setError(null);
+      } catch (err) {
+        setError(err);
+      } finally {
+        setRefreshing(false);
+      }
+    },
+    [listingId],
+  );
 
   useFocusEffect(
     useCallback(() => {
@@ -41,174 +87,242 @@ export function ListingDetailScreen({ navigation, route }: Props) {
     }, [load]),
   );
 
-  if (loading) {
+  if (error && !listing) {
     return (
-      <ScreenContainer>
-        <View style={styles.centre}>
-          <ActivityIndicator size="large" color={colours.accent} />
-        </View>
-      </ScreenContainer>
+      <Screen edges={['left', 'right']}>
+        <ErrorState error={error} onRetry={() => void load()} />
+      </Screen>
     );
   }
 
   if (!listing) {
     return (
-      <ScreenContainer>
-        <Text style={styles.error}>{error ?? 'That listing could not be loaded'}</Text>
-        <Button label="Back" variant="secondary" onPress={() => navigation.goBack()} />
-      </ScreenContainer>
+      <Screen edges={['left', 'right']}>
+        <View style={styles.content}>
+          <Skeleton width="75%" height={28} />
+          <Skeleton width="45%" height={16} style={styles.skGap} />
+          <SkeletonCard />
+          <SkeletonCard />
+        </View>
+      </Screen>
     );
   }
 
-  /*
-   * Detail returns a listing whatever its status, unlike browse. A listing
-   * that has been cancelled or fully claimed since the list was loaded must
-   * not offer a request button.
-   */
-  const canRequest = listing.status === 'open' || listing.status === 'partially_claimed';
-  const hasStock = listing.items.some((i) => Number(i.quantityRemaining) > 0);
+  const donor = listing.donor.organisationName ?? listing.donor.name;
+  const available = listing.items.filter((i) => Number(i.quantityRemaining) > 0);
+  const canRequest = isActiveListing(listing.status) && available.length > 0 && !existing;
 
   return (
-    <ScreenContainer scroll>
-      <View style={styles.titleRow}>
-        <Text style={styles.title}>{listing.title}</Text>
-        <StatusPill label={formatStatus(listing.status)} tone="neutral" />
-      </View>
-
-      <Text style={styles.donor}>
-        {listing.donor.organisationName ?? listing.donor.name}
-      </Text>
-
-      {!!listing.description && (
-        <Text style={styles.description}>{listing.description}</Text>
-      )}
-
-      <Card style={styles.card}>
-        <Text style={styles.cardHeading}>Collection</Text>
-        <Text style={styles.body}>{listing.pickupAddress}</Text>
-        <Text style={styles.meta}>
-          {formatDateTime(listing.pickupWindowStart)} to{' '}
-          {formatDateTime(listing.pickupWindowEnd)}
-        </Text>
-      </Card>
-
-      <Text style={styles.sectionHeading}>Available items</Text>
-
-      {listing.items.map((item) => {
-        const remaining = Number(item.quantityRemaining);
-        return (
-          <Card key={item.itemId}>
-            <View style={styles.itemTop}>
-              <Text style={styles.itemName} numberOfLines={1}>
-                {item.foodName}
-              </Text>
-              <StatusPill label={item.urgencyLevel} tone={item.urgencyLevel} />
+    <Screen
+      edges={['left', 'right']}
+      footer={
+        canRequest ? (
+          <Button
+            label={t('recipient.requestFood')}
+            icon="mc:basket-plus-outline"
+            size="lg"
+            onPress={() => navigation.navigate('CreateRequest', { listingId })}
+          />
+        ) : existing ? (
+          <Button
+            label={t('recipient.viewMyRequests')}
+            variant="secondary"
+            size="lg"
+            onPress={() => navigation.navigate('RecipientTabs', { screen: 'MyRequests' })}
+          />
+        ) : undefined
+      }
+    >
+      <ScrollView
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => void load(true)}
+            tintColor={theme.colors.brand}
+            colors={[theme.colors.brand]}
+          />
+        }
+      >
+        <Animated.View entering={enterSection(0, reduced)}>
+          <AppText variant="title" accessibilityRole="header">
+            {listing.title}
+          </AppText>
+          <Card variant="flat" style={styles.donor}>
+            <Avatar
+              name={donor}
+              size={44}
+              icon={listing.donor.organisationName ? 'business' : undefined}
+            />
+            <View style={styles.flex}>
+              <AppText variant="caption" color="textSecondary">
+                {t('recipient.donatedBy')}
+              </AppText>
+              <AppText variant="bodyStrong">{donor}</AppText>
             </View>
-
-            <Text style={styles.meta}>
-              {remaining > 0
-                ? `${item.quantityRemaining} ${item.unit} available`
-                : 'None left'}
-            </Text>
-            <Text style={styles.meta}>
-              {item.category} · {item.storageType}
-            </Text>
-            <Text style={[styles.expiry, styles[item.urgencyLevel]]}>
-              Expires {formatTimeUntil(item.effectiveExpiry)}
-            </Text>
           </Card>
-        );
-      })}
 
-      {!!error && <Text style={styles.error}>{error}</Text>}
+          {existing ? (
+            <InfoBanner
+              tone="info"
+              icon="checkmark-done-circle-outline"
+              title={t('recipient.alreadyRequested', {
+                when: f.relative(existing.createdAt, now),
+              })}
+              message={t('recipient.alreadyRequestedBody', {
+                status: f.status('request', existing.status),
+              })}
+            />
+          ) : null}
+          {available.length === 0 ? (
+            <InfoBanner
+              tone="neutral"
+              icon="checkmark-done"
+              message={t('recipient.noLongerAvailable')}
+            />
+          ) : null}
+        </Animated.View>
 
-      {canRequest && hasStock ? (
-        <Button
-          label="Request This Food"
-          onPress={() => navigation.navigate('CreateRequest', { listingId })}
-          style={styles.request}
+        <Animated.View entering={enterSection(1, reduced)}>
+          <Card variant="flat" style={styles.pickup}>
+            <Row
+              icon="location"
+              label={t('donor.pickupTitle')}
+              value={listing.pickupAddress}
+            />
+            <Row
+              icon="time"
+              label={t('donor.windowTitle')}
+              value={f.window(listing.pickupWindowStart, listing.pickupWindowEnd)}
+            />
+          </Card>
+          {listing.description ? (
+            <Card variant="flat">
+              <AppText variant="caption" color="textSecondary" style={styles.notesLabel}>
+                {t('donor.notesTitle')}
+              </AppText>
+              <AppText variant="body">{listing.description}</AppText>
+            </Card>
+          ) : null}
+        </Animated.View>
+
+        <SectionHeader
+          title={t('donor.foodInListing')}
+          meta={String(listing.items.length)}
         />
-      ) : (
-        <Text style={styles.closedNote}>
-          {canRequest
-            ? 'Every item on this listing has been claimed.'
-            : 'This listing is no longer accepting requests.'}
-        </Text>
-      )}
-    </ScreenContainer>
+        {listing.items.map((item, index) => {
+          const left = Number(item.quantityRemaining) > 0;
+          return (
+            <Animated.View key={item.itemId} entering={enterListItem(index, reduced)}>
+              <Card style={!left ? styles.dim : undefined}>
+                <View style={styles.itemRow}>
+                  {left ? (
+                    <FreshnessRing
+                      fraction={freshnessFraction(item, now)}
+                      level={item.urgencyLevel}
+                      size={46}
+                    />
+                  ) : (
+                    <View style={styles.itemIcon}>
+                      <Icon name={itemIcon(item)} size={20} color="textSecondary" />
+                    </View>
+                  )}
+                  <View style={styles.flex}>
+                    <AppText variant="bodyStrong" numberOfLines={2}>
+                      {item.foodName}
+                    </AppText>
+                    <AppText variant="secondary" color="textSecondary">
+                      {t('recipient.available', {
+                        qty: f.quantity(item.quantityRemaining, item.unit),
+                      })}
+                    </AppText>
+                  </View>
+                </View>
+                <View style={styles.badges}>
+                  {left ? (
+                    <UrgencyBadge
+                      level={item.urgencyLevel}
+                      timeLeft={f.timeLeft(item.effectiveExpiry, now)}
+                      size="sm"
+                    />
+                  ) : null}
+                  <Badge
+                    size="sm"
+                    label={t(`categories.${item.category}`)}
+                    tone={item.category === 'prepared' ? 'urgent' : 'olive'}
+                  />
+                  <Badge size="sm" label={t(`storage.${item.storageType}`)} />
+                </View>
+              </Card>
+            </Animated.View>
+          );
+        })}
+      </ScrollView>
+    </Screen>
   );
 }
 
-const styles = StyleSheet.create({
-  centre: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  titleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacing.sm,
-  },
-  title: {
-    fontSize: fontSize.title,
-    fontWeight: fontWeight.bold,
-    color: colours.textPrimary,
-    flexShrink: 1,
-  },
+function Row({
+  icon,
+  label,
+  value,
+}: {
+  icon: 'location' | 'time';
+  label: string;
+  value: string;
+}) {
+  const styles = useStyles();
+  return (
+    <View style={styles.row}>
+      <View style={styles.rowIcon}>
+        <Icon name={icon} size={18} color="brandText" />
+      </View>
+      <View style={styles.flex}>
+        <AppText variant="caption" color="textSecondary">
+          {label}
+        </AppText>
+        <AppText variant="callout">{value}</AppText>
+      </View>
+    </View>
+  );
+}
+
+const useStyles = makeStyles((t) => ({
+  content: { padding: t.layout.screenPadding, paddingBottom: t.spacing.xxl },
+  flex: { flex: 1 },
+  skGap: { marginTop: t.spacing.sm, marginBottom: t.spacing.lg },
   donor: {
-    fontSize: fontSize.secondary,
-    color: colours.textSecondary,
-    marginTop: spacing.xs,
-  },
-  description: {
-    fontSize: fontSize.secondary,
-    color: colours.textSecondary,
-    lineHeight: 20,
-    marginTop: spacing.sm,
-  },
-  card: { marginTop: spacing.md },
-  cardHeading: {
-    fontSize: fontSize.label,
-    fontWeight: fontWeight.semibold,
-    color: colours.textSecondary,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginBottom: spacing.xs,
-  },
-  sectionHeading: {
-    fontSize: fontSize.heading,
-    fontWeight: fontWeight.semibold,
-    color: colours.textPrimary,
-    marginTop: spacing.lg,
-    marginBottom: spacing.sm,
-  },
-  itemTop: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacing.sm,
-    marginBottom: spacing.xs,
+    gap: t.spacing.sm + 4,
+    marginTop: t.spacing.md,
   },
-  itemName: {
-    fontSize: fontSize.body,
-    fontWeight: fontWeight.semibold,
-    color: colours.textPrimary,
-    flexShrink: 1,
+  pickup: { gap: t.spacing.md },
+  row: { flexDirection: 'row', alignItems: 'center', gap: t.spacing.sm + 4 },
+  rowIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: t.colors.brandSoft,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  body: { fontSize: fontSize.body, color: colours.textPrimary },
-  meta: { fontSize: fontSize.secondary, color: colours.textSecondary, lineHeight: 20 },
-  expiry: {
-    fontSize: fontSize.secondary,
-    fontWeight: fontWeight.semibold,
-    marginTop: spacing.xs,
+  notesLabel: { marginBottom: t.spacing.xs },
+  dim: { opacity: 0.55 },
+  itemRow: { flexDirection: 'row', alignItems: 'center', gap: t.spacing.sm + 4 },
+  itemIcon: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    backgroundColor: t.colors.surfaceMuted,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  critical: { color: colours.critical },
-  urgent: { color: colours.urgent },
-  safe: { color: colours.safe },
-  request: { marginTop: spacing.lg },
-  closedNote: {
-    fontSize: fontSize.secondary,
-    color: colours.textSecondary,
-    marginTop: spacing.lg,
-    lineHeight: 20,
+  badges: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: t.spacing.xs + 2,
+    marginTop: t.spacing.sm + 4,
   },
-  error: { color: colours.critical, fontSize: fontSize.secondary, marginTop: spacing.md },
-});
+}));

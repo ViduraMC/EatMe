@@ -1,282 +1,276 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, RefreshControl, View } from 'react-native';
+import Animated from 'react-native-reanimated';
+import { useFocusEffect } from '@react-navigation/native';
 import {
-  ActivityIndicator,
-  FlatList,
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
-import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-
-import { Card, EmptyState, Input, ScreenContainer, StatusPill } from '../../components';
+  AppText,
+  Avatar,
+  Chip,
+  ChipRow,
+  EmptyState,
+  ErrorState,
+  LargeTitle,
+  PressableScale,
+  Screen,
+  SearchBar,
+  SkeletonList,
+  TopBar,
+  useScrollY,
+} from '../../components';
 import { browseListings } from '../../api/donations.api';
-import { getErrorMessage } from '../../api/client';
 import { useAuth } from '../../context/AuthContext';
-import { colours, fontSize, fontWeight, layout, spacing } from '../../constants/theme';
-import { formatTimeUntil } from '../../utils/datetime';
-import type { DonationListing, ItemCategory, UrgencyLevel } from '../../types/donation';
-import type { RecipientStackParamList } from '../../navigation/types';
+import { useNow } from '../../hooks/useNow';
+import { useI18n } from '../../i18n';
+import { useFormat } from '../../i18n/format';
+import { makeStyles, useTheme } from '../../theme';
+import { enterListItem, useReducedMotion } from '../../theme/animations';
+import type { DonationListing } from '../../types/donation';
+import type { RecipientTabProps } from '../../navigation/types';
+import { FoodCard } from './components/FoodCard';
 
-type BrowseListingsParamList = RecipientStackParamList & {
-  BrowseListings: undefined;
-  ListingDetail: { listingId: number };
-};
-
-type Props = NativeStackScreenProps<BrowseListingsParamList, 'BrowseListings'>;
-
-/** The most pressing item in a listing decides the colour of its pill. */
-function worstUrgency(listing: DonationListing): UrgencyLevel {
-  if (listing.items.some((i) => i.urgencyLevel === 'critical')) return 'critical';
-  if (listing.items.some((i) => i.urgencyLevel === 'urgent')) return 'urgent';
-  return 'safe';
-}
-
-/** The soonest expiry across the listing, which is what a recipient acts on. */
-function soonestExpiry(listing: DonationListing): string | null {
-  const dates = listing.items
-    .map((i) => i.effectiveExpiry)
-    .filter((d): d is string => !!d)
-    .sort();
-  return dates[0] ?? null;
-}
+type Quick = 'all' | 'urgent' | 'prepared' | 'packaged';
+const PAGE_SIZE = 20;
 
 /**
- * US-R01: browse available food.
+ * The recipient's home: food available now, most urgent first (the API
+ * orders it that way).
  *
- * The API does the ordering and filtering. Listings arrive urgent first then
- * by soonest expiry, with expired food and empty items already excluded, so
- * this screen never re-sorts: doing so would fight the server's ordering and
- * break pagination.
+ * Filters are a single row of chips rather than a filter sheet: there are
+ * only four useful choices, so showing them is quicker than hiding them.
+ * Search waits until typing pauses before asking the server, and more
+ * listings load as the list nears its end.
  */
-export function BrowseListingsScreen({ navigation }: Props) {
-  const { user, logout } = useAuth();
+export function BrowseListingsScreen({
+  navigation,
+}: RecipientTabProps<'BrowseListings'>) {
+  const theme = useTheme();
+  const styles = useStyles();
+  const { t } = useI18n();
+  const f = useFormat();
+  const { user } = useAuth();
+  const now = useNow();
+  const reduced = useReducedMotion();
+  const { scrollY, onScroll } = useScrollY();
 
-  const [listings, setListings] = useState<DonationListing[]>([]);
   const [search, setSearch] = useState('');
-  const [category, setCategory] = useState<ItemCategory | null>(null);
-  const [urgentOnly, setUrgentOnly] = useState(false);
+  const [query, setQuery] = useState('');
+  const [quick, setQuick] = useState<Quick>('all');
+  const [listings, setListings] = useState<DonationListing[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<unknown>(null);
+  const requestId = useRef(0);
+
+  // Debounce: wait for a pause in typing before searching.
+  useEffect(() => {
+    const id = setTimeout(() => setQuery(search.trim()), 350);
+    return () => clearTimeout(id);
+  }, [search]);
 
   const load = useCallback(
-    async (
-      term: string,
-      cat: ItemCategory | null,
-      urgent: boolean,
-      isRefresh = false,
-    ) => {
-      if (isRefresh) setRefreshing(true);
-      setError(null);
+    async (targetPage: number, mode: 'initial' | 'refresh' | 'more') => {
+      const id = ++requestId.current;
+      if (mode === 'refresh') setRefreshing(true);
+      if (mode === 'more') setLoadingMore(true);
       try {
         const result = await browseListings({
-          search: term.trim() || undefined,
-          category: cat ?? undefined,
-          urgentOnly: urgent || undefined,
-          limit: 50,
+          search: query || undefined,
+          urgentOnly: quick === 'urgent' || undefined,
+          category: quick === 'prepared' || quick === 'packaged' ? quick : undefined,
+          page: targetPage,
+          limit: PAGE_SIZE,
         });
-        setListings(result.listings);
+        // Ignore answers to searches the user has already moved on from.
+        if (id !== requestId.current) return;
+        setListings((current) =>
+          mode === 'more' ? [...current, ...result.listings] : result.listings,
+        );
+        setTotal(result.total);
+        setPage(targetPage);
+        setError(null);
       } catch (err) {
-        setError(getErrorMessage(err));
+        if (id === requestId.current) setError(err);
       } finally {
-        setLoading(false);
-        setRefreshing(false);
+        if (id === requestId.current) {
+          setLoading(false);
+          setRefreshing(false);
+          setLoadingMore(false);
+        }
       }
     },
-    [],
+    [query, quick],
   );
 
-  /*
-   * Debounced so typing does not fire a request per keystroke. 350ms is long
-   * enough to finish a word and short enough not to feel laggy.
-   */
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      void load(search, category, urgentOnly);
-    }, 350);
-    return () => clearTimeout(timer);
-  }, [search, category, urgentOnly, load]);
+  useFocusEffect(
+    useCallback(() => {
+      void load(1, 'initial');
+    }, [load]),
+  );
 
-  return (
-    <ScreenContainer>
-      <View style={styles.header}>
-        <View style={styles.headerText}>
-          <Text style={styles.greeting}>{user?.organisationName ?? user?.name}</Text>
-          <Text style={styles.subtitle}>Available food near you</Text>
-        </View>
-        <Pressable onPress={() => void logout()} accessibilityRole="button">
-          <Text style={styles.logout}>Log Out</Text>
-        </Pressable>
-      </View>
+  const canLoadMore = listings.length < total && !loadingMore && !loading;
+  const filtered = !!query || quick !== 'all';
+  const displayName = user?.organisationName ?? user?.name ?? '';
 
-      <Input
-        label="Search"
+  const avatar = (
+    <PressableScale
+      onPress={() => navigation.navigate('RecipientProfile')}
+      accessibilityRole="button"
+      accessibilityLabel={t('tabs.profile')}
+      scaleTo={0.92}
+    >
+      <Avatar
+        name={displayName}
+        size={42}
+        icon={user?.organisationName ? 'mc:home-heart' : undefined}
+      />
+    </PressableScale>
+  );
+
+  const header = (
+    <View>
+      <LargeTitle
+        eyebrow={t('donor.greetingName', {
+          greeting: f.greeting(),
+          name: user?.name.split(' ')[0] ?? '',
+        })}
+        title={t('recipient.browseTitle')}
+        right={avatar}
+        scrollY={scrollY}
+      />
+      <SearchBar
         value={search}
         onChangeText={setSearch}
-        placeholder="Bread, rice, curry..."
-        autoCapitalize="none"
-        autoCorrect={false}
+        placeholder={t('recipient.searchPlaceholder')}
       />
-
-      <View style={styles.filterRow}>
-        <Pressable
-          onPress={() => setUrgentOnly((v) => !v)}
-          accessibilityRole="switch"
-          accessibilityState={{ checked: urgentOnly }}
-          style={[styles.chip, urgentOnly && styles.chipOn]}
+      <ChipRow style={styles.chips}>
+        <Chip
+          label={t('common.all')}
+          selected={quick === 'all'}
+          onPress={() => setQuick('all')}
+        />
+        <Chip
+          label={t('recipient.filterUrgent')}
+          icon="mc:fire"
+          tone="critical"
+          selected={quick === 'urgent'}
+          onPress={() => setQuick('urgent')}
+        />
+        <Chip
+          label={t('categories.prepared')}
+          icon="mc:pot-steam-outline"
+          selected={quick === 'prepared'}
+          onPress={() => setQuick('prepared')}
+        />
+        <Chip
+          label={t('categories.packaged')}
+          icon="mc:package-variant-closed"
+          selected={quick === 'packaged'}
+          onPress={() => setQuick('packaged')}
+        />
+      </ChipRow>
+      {!loading && !error && listings.length > 0 ? (
+        <AppText
+          variant="caption"
+          color="textSecondary"
+          style={styles.count}
+          accessibilityLiveRegion="polite"
         >
-          <Text style={[styles.chipText, urgentOnly && styles.chipTextOn]}>
-            Urgent only
-          </Text>
-        </Pressable>
+          {t('recipient.resultCount', { count: total })}
+        </AppText>
+      ) : null}
+    </View>
+  );
 
-        {(['packaged', 'prepared'] as ItemCategory[]).map((c) => (
-          <Pressable
-            key={c}
-            onPress={() => setCategory((current) => (current === c ? null : c))}
-            accessibilityRole="radio"
-            accessibilityState={{ selected: category === c }}
-            style={[styles.chip, category === c && styles.chipOn]}
-          >
-            <Text style={[styles.chipText, category === c && styles.chipTextOn]}>
-              {c}
-            </Text>
-          </Pressable>
-        ))}
-      </View>
+  let empty: React.ReactElement;
+  if (loading) empty = <SkeletonList count={3} />;
+  else if (error)
+    empty = <ErrorState error={error} onRetry={() => void load(1, 'initial')} />;
+  else if (filtered)
+    empty = (
+      <EmptyState
+        compact
+        illustration="emptyBowl"
+        title={t('recipient.noMatchTitle')}
+        message={t('recipient.noMatchBody')}
+        actionLabel={t('recipient.clearFilters')}
+        onAction={() => {
+          setSearch('');
+          setQuick('all');
+        }}
+      />
+    );
+  else
+    empty = (
+      <EmptyState
+        illustration="emptyBowl"
+        title={t('recipient.browseEmptyTitle')}
+        message={t('recipient.browseEmptyBody')}
+      />
+    );
 
-      {!!error && <Text style={styles.error}>{error}</Text>}
-
-      {loading ? (
-        <View style={styles.centre}>
-          <ActivityIndicator size="large" color={colours.accent} />
-        </View>
-      ) : (
-        <FlatList
-          data={listings}
-          keyExtractor={(l) => String(l.listingId)}
-          refreshing={refreshing}
-          onRefresh={() => void load(search, category, urgentOnly, true)}
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={listings.length === 0 ? styles.emptyWrap : undefined}
-          ListEmptyComponent={
-            <EmptyState
-              title={
-                search || category || urgentOnly ? 'Nothing matches' : 'No food available'
-              }
-              message={
-                search || category || urgentOnly
-                  ? 'Try clearing the search or the filters.'
-                  : 'When a donor posts surplus food, it appears here with the most urgent first.'
+  return (
+    <Screen>
+      <TopBar title={t('recipient.browseTitle')} scrollY={scrollY} right={avatar} />
+      <Animated.FlatList
+        data={loading || error ? [] : listings}
+        keyExtractor={(item) => String(item.listingId)}
+        onScroll={onScroll}
+        scrollEventThrottle={16}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+        ListHeaderComponent={header}
+        ListEmptyComponent={empty}
+        ListFooterComponent={
+          loadingMore ? (
+            <View
+              style={styles.more}
+              accessible
+              accessibilityLabel={t('recipient.loadingMore')}
+            >
+              <ActivityIndicator color={theme.colors.brand} />
+            </View>
+          ) : null
+        }
+        onEndReachedThreshold={0.4}
+        onEndReached={() => {
+          if (canLoadMore) void load(page + 1, 'more');
+        }}
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => void load(1, 'refresh')}
+            tintColor={theme.colors.brand}
+            colors={[theme.colors.brand]}
+          />
+        }
+        renderItem={({ item, index }) => (
+          <Animated.View entering={enterListItem(index % PAGE_SIZE, reduced)}>
+            <FoodCard
+              listing={item}
+              now={now}
+              onPress={() =>
+                navigation.navigate('ListingDetail', { listingId: item.listingId })
               }
             />
-          }
-          renderItem={({ item }) => {
-            const urgency = worstUrgency(item);
-            const expiry = soonestExpiry(item);
-
-            return (
-              <Card
-                onPress={() =>
-                  navigation.navigate('ListingDetail', { listingId: item.listingId })
-                }
-              >
-                <View style={styles.cardTop}>
-                  <Text style={styles.cardTitle} numberOfLines={1}>
-                    {item.title}
-                  </Text>
-                  <StatusPill label={urgency} tone={urgency} />
-                </View>
-
-                <Text style={styles.cardMeta} numberOfLines={1}>
-                  {item.donor.organisationName ?? item.donor.name}
-                </Text>
-
-                <Text style={styles.cardMeta}>
-                  {item.items.length} item{item.items.length === 1 ? '' : 's'}
-                  {expiry ? ` · soonest expires ${formatTimeUntil(expiry)}` : ''}
-                </Text>
-
-                <Text style={styles.cardItems} numberOfLines={2}>
-                  {item.items.map((i) => i.foodName).join(', ')}
-                </Text>
-              </Card>
-            );
-          }}
-        />
-      )}
-    </ScreenContainer>
+          </Animated.View>
+        )}
+      />
+    </Screen>
   );
 }
 
-const styles = StyleSheet.create({
-  centre: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    marginBottom: spacing.md,
-    gap: spacing.sm,
+const useStyles = makeStyles((t) => ({
+  content: {
+    paddingHorizontal: t.layout.screenPadding,
+    paddingBottom: t.spacing.xxl,
+    flexGrow: 1,
   },
-  headerText: { flexShrink: 1 },
-  greeting: {
-    fontSize: fontSize.heading,
-    fontWeight: fontWeight.semibold,
-    color: colours.textPrimary,
-  },
-  subtitle: { fontSize: fontSize.secondary, color: colours.textSecondary },
-  logout: {
-    fontSize: fontSize.secondary,
-    fontWeight: fontWeight.medium,
-    color: colours.textSecondary,
-    paddingVertical: spacing.xs,
-  },
-  filterRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.xs,
-    marginBottom: spacing.md,
-  },
-  chip: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: layout.radius,
-    borderWidth: layout.borderWidth,
-    borderColor: colours.border,
-    backgroundColor: colours.background,
-  },
-  chipOn: { borderColor: colours.accent, backgroundColor: colours.surface },
-  chipText: { fontSize: fontSize.secondary, color: colours.textSecondary },
-  chipTextOn: { color: colours.accent, fontWeight: fontWeight.semibold },
-  emptyWrap: { flexGrow: 1, justifyContent: 'center' },
-  cardTop: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacing.sm,
-    marginBottom: spacing.xs,
-  },
-  cardTitle: {
-    fontSize: fontSize.body,
-    fontWeight: fontWeight.semibold,
-    color: colours.textPrimary,
-    flexShrink: 1,
-  },
-  cardMeta: {
-    fontSize: fontSize.secondary,
-    color: colours.textSecondary,
-    lineHeight: 20,
-  },
-  cardItems: {
-    fontSize: fontSize.label,
-    color: colours.textSecondary,
-    marginTop: spacing.xs,
-    lineHeight: 16,
-  },
-  error: {
-    color: colours.critical,
-    fontSize: fontSize.secondary,
-    marginBottom: spacing.sm,
-  },
-});
+  chips: { marginTop: t.spacing.sm + 4, marginBottom: t.spacing.sm },
+  count: { marginBottom: t.spacing.sm + 4 },
+  more: { paddingVertical: t.spacing.lg },
+}));

@@ -1,62 +1,79 @@
-import React, { useCallback, useState } from 'react';
-import {
-  ActivityIndicator,
-  Alert,
-  FlatList,
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import React, { useCallback, useMemo, useState } from 'react';
+import { RefreshControl, View } from 'react-native';
+import Animated from 'react-native-reanimated';
 import { useFocusEffect } from '@react-navigation/native';
-import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-
-import { Button, Card, EmptyState, ScreenContainer, StatusPill } from '../../components';
+import {
+  AppText,
+  Avatar,
+  Badge,
+  Button,
+  Card,
+  Chip,
+  ChipRow,
+  EmptyState,
+  ErrorState,
+  Icon,
+  LargeTitle,
+  Screen,
+  SkeletonList,
+  Timeline,
+  TopBar,
+  useConfirm,
+  useScrollY,
+  useToast,
+  type TimelineStep,
+} from '../../components';
 import { cancelRequest, fetchMyRequests } from '../../api/requests.api';
-import { getErrorMessage } from '../../api/client';
-import { colours, fontSize, fontWeight, layout, spacing } from '../../constants/theme';
-import { formatDateTime, formatStatus } from '../../utils/datetime';
+import { useNow } from '../../hooks/useNow';
+import { useI18n } from '../../i18n';
+import { describeError } from '../../i18n/errors';
+import { useFormat } from '../../i18n/format';
+import { makeStyles, useTheme } from '../../theme';
+import {
+  enterListItem,
+  layoutTransition,
+  useReducedMotion,
+} from '../../theme/animations';
 import type { DonationRequest, RequestStatus } from '../../types/request';
-import type { RecipientStackParamList } from '../../navigation/types';
-
-type MyRequestsParamList = RecipientStackParamList & {
-  MyRequests: undefined;
-  BrowseListings: undefined;
-};
-
-type Props = NativeStackScreenProps<MyRequestsParamList, 'MyRequests'>;
+import { requestTone } from '../../utils/status';
+import type { RecipientTabProps } from '../../navigation/types';
 
 type Filter = 'all' | RequestStatus;
+const FILTERS: Filter[] = ['all', 'pending', 'accepted', 'rejected', 'cancelled'];
 
-const FILTERS: Array<{ value: Filter; label: string }> = [
-  { value: 'all', label: 'All' },
-  { value: 'pending', label: 'Pending' },
-  { value: 'accepted', label: 'Accepted' },
-  { value: 'rejected', label: 'Rejected' },
-  { value: 'cancelled', label: 'Cancelled' },
-];
+/**
+ * Everything this recipient has asked for, and where each request is.
+ *
+ * Each card shows a three-step journey (sent, coordinator review, delivery)
+ * so "what happens now?" is answered without asking anyone. A pending
+ * request can be withdrawn; that is a quiet text button behind a
+ * confirmation, since it gives the food back to other recipients.
+ */
+export function MyRequestsScreen({ navigation }: RecipientTabProps<'MyRequests'>) {
+  const theme = useTheme();
+  const styles = useStyles();
+  const { t } = useI18n();
+  const f = useFormat();
+  const toast = useToast();
+  const confirm = useConfirm();
+  const now = useNow(60_000);
+  const reduced = useReducedMotion();
+  const { scrollY, onScroll } = useScrollY();
 
-function toneFor(status: RequestStatus): 'safe' | 'critical' | 'neutral' {
-  if (status === 'accepted') return 'safe';
-  if (status === 'rejected') return 'critical';
-  return 'neutral';
-}
-
-export function MyRequestsScreen({ navigation }: Props) {
   const [requests, setRequests] = useState<DonationRequest[]>([]);
   const [filter, setFilter] = useState<Filter>('all');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<unknown>(null);
   const [cancellingId, setCancellingId] = useState<number | null>(null);
-  const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(async (current: Filter, isRefresh = false) => {
+  const load = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
-    setError(null);
     try {
-      setRequests(await fetchMyRequests(current === 'all' ? undefined : current));
+      setRequests(await fetchMyRequests());
+      setError(null);
     } catch (err) {
-      setError(getErrorMessage(err));
+      setError(err);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -65,216 +82,266 @@ export function MyRequestsScreen({ navigation }: Props) {
 
   useFocusEffect(
     useCallback(() => {
-      void load(filter);
-    }, [load, filter]),
+      void load();
+    }, [load]),
   );
 
-  function changeFilter(next: Filter) {
-    setFilter(next);
-    setLoading(true);
-    void load(next);
-  }
-
-  function confirmCancel(request: DonationRequest) {
-    Alert.alert(
-      'Withdraw this request?',
-      'The donor and the coordinator will no longer see it. This cannot be undone.',
-      [
-        { text: 'Keep it', style: 'cancel' },
-        {
-          text: 'Withdraw',
-          style: 'destructive',
-          onPress: () => void doCancel(request.requestId),
-        },
-      ],
-    );
-  }
-
-  async function doCancel(requestId: number) {
-    setCancellingId(requestId);
-    setError(null);
+  async function onCancel(request: DonationRequest) {
+    const ok = await confirm({
+      title: t('recipient.cancelTitle'),
+      message: t('recipient.cancelBody'),
+      confirmLabel: t('recipient.cancelRequest'),
+      cancelLabel: t('recipient.keepRequest'),
+      tone: 'critical',
+    });
+    if (!ok) return;
+    setCancellingId(request.requestId);
     try {
-      await cancelRequest(requestId);
-      await load(filter);
+      const updated = await cancelRequest(request.requestId);
+      setRequests((current) =>
+        current.map((r) =>
+          r.requestId === updated.requestId ? { ...r, status: updated.status } : r,
+        ),
+      );
+      toast.show({ type: 'success', title: t('recipient.cancelledToast') });
     } catch (err) {
-      setError(getErrorMessage(err));
+      toast.show({ type: 'error', title: describeError(err, t).message });
     } finally {
       setCancellingId(null);
     }
   }
 
-  return (
-    <ScreenContainer>
-      <Text style={styles.heading}>My requests</Text>
+  const counts = useMemo(() => {
+    const c: Record<Filter, number> = {
+      all: requests.length,
+      pending: 0,
+      accepted: 0,
+      rejected: 0,
+      cancelled: 0,
+    };
+    requests.forEach((r) => {
+      c[r.status] += 1;
+    });
+    return c;
+  }, [requests]);
 
-      <View style={styles.filterRow}>
-        {FILTERS.map((f) => (
-          <Pressable
-            key={f.value}
-            onPress={() => changeFilter(f.value)}
-            accessibilityRole="radio"
-            accessibilityState={{ selected: filter === f.value }}
-            style={[styles.chip, filter === f.value && styles.chipOn]}
-          >
-            <Text style={[styles.chipText, filter === f.value && styles.chipTextOn]}>
-              {f.label}
-            </Text>
-          </Pressable>
-        ))}
-      </View>
+  const visible =
+    filter === 'all' ? requests : requests.filter((r) => r.status === filter);
 
-      {!!error && <Text style={styles.error}>{error}</Text>}
-
-      {loading ? (
-        <View style={styles.centre}>
-          <ActivityIndicator size="large" color={colours.accent} />
-        </View>
-      ) : (
-        <FlatList
-          data={requests}
-          keyExtractor={(r) => String(r.requestId)}
-          refreshing={refreshing}
-          onRefresh={() => void load(filter, true)}
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={requests.length === 0 ? styles.emptyWrap : undefined}
-          ListEmptyComponent={
-            <EmptyState
-              title={filter === 'all' ? 'No requests yet' : `No ${filter} requests`}
-              message={
-                filter === 'all'
-                  ? 'Browse available food and ask for what your organisation needs.'
-                  : 'Try a different filter to see your other requests.'
-              }
-              actionLabel={filter === 'all' ? 'Browse food' : undefined}
-              onAction={
-                filter === 'all' ? () => navigation.navigate('BrowseListings') : undefined
-              }
+  const header = (
+    <View>
+      <LargeTitle
+        title={t('recipient.myRequestsTitle')}
+        subtitle={t('recipient.myRequestsSubtitle')}
+        scrollY={scrollY}
+      />
+      {!loading && !error && requests.length > 0 ? (
+        <ChipRow style={styles.chips}>
+          {FILTERS.filter((key) => key === 'all' || counts[key] > 0).map((key) => (
+            <Chip
+              key={key}
+              label={key === 'all' ? t('common.all') : f.status('request', key)}
+              count={counts[key]}
+              tone={key === 'all' ? 'brand' : requestTone[key]}
+              selected={filter === key}
+              onPress={() => setFilter(key)}
             />
-          }
-          renderItem={({ item }) => (
-            <Card>
-              <View style={styles.cardTop}>
-                <Text style={styles.cardTitle} numberOfLines={1}>
-                  {item.listing.title}
-                </Text>
-                <StatusPill
-                  label={formatStatus(item.status)}
-                  tone={toneFor(item.status)}
-                />
-              </View>
+          ))}
+        </ChipRow>
+      ) : null}
+    </View>
+  );
 
-              <Text style={styles.meta} numberOfLines={1}>
-                {item.listing.donor.organisationName ?? item.listing.donor.name}
-              </Text>
+  let empty: React.ReactElement;
+  if (loading) empty = <SkeletonList count={3} />;
+  else if (error) empty = <ErrorState error={error} onRetry={() => void load()} />;
+  else if (requests.length === 0)
+    empty = (
+      <EmptyState
+        illustration="requestFood"
+        title={t('recipient.myEmptyTitle')}
+        message={t('recipient.myEmptyBody')}
+        actionLabel={t('recipient.browseFood')}
+        onAction={() => navigation.navigate('BrowseListings')}
+      />
+    );
+  else
+    empty = (
+      <EmptyState compact illustration="allClear" title={t('recipient.myFilterEmpty')} />
+    );
 
-              <View style={styles.items}>
-                {item.items.map((requested) => (
-                  <Text key={requested.requestItemId} style={styles.itemLine}>
-                    {'•'} {requested.quantityRequested} {requested.item.unit}{' '}
-                    {requested.item.foodName}
-                  </Text>
-                ))}
-              </View>
-
-              {!!item.message && <Text style={styles.message}>“{item.message}”</Text>}
-
-              {item.status === 'rejected' && !!item.rejectionReason && (
-                <Text style={styles.rejection}>Reason: {item.rejectionReason}</Text>
-              )}
-
-              {item.status === 'accepted' && (
-                <Text style={styles.accepted}>
-                  Accepted. Collect from {item.listing.pickupAddress}, between{' '}
-                  {formatDateTime(item.listing.pickupWindowStart)} and{' '}
-                  {formatDateTime(item.listing.pickupWindowEnd)}.
-                </Text>
-              )}
-
-              <Text style={styles.sent}>Sent {formatDateTime(item.createdAt)}</Text>
-
-              {item.status === 'pending' && (
-                <Button
-                  label="Withdraw request"
-                  variant="secondary"
-                  onPress={() => confirmCancel(item)}
-                  loading={cancellingId === item.requestId}
-                  style={styles.cancelButton}
-                />
-              )}
-            </Card>
-          )}
-        />
-      )}
-    </ScreenContainer>
+  return (
+    <Screen>
+      <TopBar title={t('recipient.myRequestsTitle')} scrollY={scrollY} />
+      <Animated.FlatList
+        data={loading || error ? [] : visible}
+        keyExtractor={(r) => String(r.requestId)}
+        onScroll={onScroll}
+        scrollEventThrottle={16}
+        ListHeaderComponent={header}
+        ListEmptyComponent={empty}
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => void load(true)}
+            tintColor={theme.colors.brand}
+            colors={[theme.colors.brand]}
+          />
+        }
+        renderItem={({ item, index }) => (
+          <Animated.View
+            entering={enterListItem(index, reduced)}
+            layout={layoutTransition(reduced)}
+          >
+            <RequestCard
+              request={item}
+              now={now}
+              cancelling={cancellingId === item.requestId}
+              onCancel={() => void onCancel(item)}
+            />
+          </Animated.View>
+        )}
+      />
+    </Screen>
   );
 }
 
-const styles = StyleSheet.create({
-  centre: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  heading: {
-    fontSize: fontSize.title,
-    fontWeight: fontWeight.bold,
-    color: colours.textPrimary,
-    marginBottom: spacing.sm,
+function RequestCard({
+  request,
+  now,
+  cancelling,
+  onCancel,
+}: {
+  request: DonationRequest;
+  now: number;
+  cancelling: boolean;
+  onCancel: () => void;
+}) {
+  const styles = useStyles();
+  const { t } = useI18n();
+  const f = useFormat();
+  const donor = request.listing.donor.organisationName ?? request.listing.donor.name;
+
+  const review: TimelineStep =
+    request.status === 'pending'
+      ? {
+          key: 'review',
+          title: t('recipient.stepReview'),
+          state: 'current',
+          icon: 'hourglass-outline',
+        }
+      : request.status === 'accepted'
+        ? { key: 'review', title: t('recipient.stepApproved'), state: 'done' }
+        : request.status === 'rejected'
+          ? { key: 'review', title: t('recipient.stepRejected'), state: 'failed' }
+          : { key: 'review', title: t('recipient.stepCancelled'), state: 'failed' };
+
+  const steps: TimelineStep[] = [
+    {
+      key: 'sent',
+      title: t('recipient.stepSent'),
+      subtitle: f.relative(request.createdAt, now),
+      state: 'done',
+    },
+    review,
+    {
+      key: 'delivery',
+      title: t('recipient.stepDelivery'),
+      state: request.status === 'accepted' ? 'current' : 'upcoming',
+      icon: 'mc:truck-delivery-outline',
+    },
+  ];
+
+  return (
+    <Card>
+      <View style={styles.head}>
+        <View style={styles.flex}>
+          <AppText variant="bodyStrong" numberOfLines={2}>
+            {request.listing.title}
+          </AppText>
+          <View style={styles.donorRow}>
+            <Avatar name={donor} size={20} />
+            <AppText
+              variant="caption"
+              color="textSecondary"
+              numberOfLines={1}
+              style={styles.flex}
+            >
+              {donor}
+            </AppText>
+          </View>
+        </View>
+        <Badge
+          label={f.status('request', request.status)}
+          tone={requestTone[request.status]}
+          dot={request.status === 'pending'}
+          size="sm"
+        />
+      </View>
+
+      <View style={styles.items}>
+        {request.items.map((line) => (
+          <View key={line.requestItemId} style={styles.line}>
+            <Icon name="ellipse" size={6} color="brand" />
+            <AppText variant="secondary" numberOfLines={1} style={styles.flex}>
+              {line.item.foodName}
+            </AppText>
+            <AppText variant="secondaryStrong">
+              {f.quantity(line.quantityRequested, line.item.unit)}
+            </AppText>
+          </View>
+        ))}
+      </View>
+
+      <Timeline steps={steps} style={styles.timeline} />
+
+      {request.status === 'rejected' && request.rejectionReason ? (
+        <AppText variant="caption" color="criticalText">
+          {t('donor.reason', { reason: request.rejectionReason })}
+        </AppText>
+      ) : null}
+
+      {request.status === 'pending' ? (
+        <Button
+          label={t('recipient.cancelRequest')}
+          variant="dangerGhost"
+          size="sm"
+          inline
+          icon="close-circle-outline"
+          onPress={onCancel}
+          loading={cancelling}
+          style={styles.cancel}
+        />
+      ) : null}
+    </Card>
+  );
+}
+
+const useStyles = makeStyles((t) => ({
+  content: {
+    paddingHorizontal: t.layout.screenPadding,
+    paddingBottom: t.spacing.xxl,
+    flexGrow: 1,
   },
-  filterRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.xs,
-    marginBottom: spacing.md,
-  },
-  chip: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: layout.radius,
-    borderWidth: layout.borderWidth,
-    borderColor: colours.border,
-    backgroundColor: colours.background,
-  },
-  chipOn: { borderColor: colours.accent, backgroundColor: colours.surface },
-  chipText: { fontSize: fontSize.secondary, color: colours.textSecondary },
-  chipTextOn: { color: colours.accent, fontWeight: fontWeight.semibold },
-  emptyWrap: { flexGrow: 1, justifyContent: 'center' },
-  cardTop: {
+  chips: { marginBottom: t.spacing.md },
+  flex: { flex: 1 },
+  head: { flexDirection: 'row', alignItems: 'flex-start', gap: t.spacing.sm },
+  donorRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacing.sm,
-    marginBottom: spacing.xs,
+    gap: t.spacing.xs + 2,
+    marginTop: 4,
   },
-  cardTitle: {
-    fontSize: fontSize.body,
-    fontWeight: fontWeight.semibold,
-    color: colours.textPrimary,
-    flexShrink: 1,
+  items: {
+    marginTop: t.spacing.sm + 4,
+    padding: t.spacing.sm + 4,
+    borderRadius: t.radius.md,
+    backgroundColor: t.colors.surfaceMuted,
+    gap: t.spacing.xs + 2,
   },
-  meta: { fontSize: fontSize.secondary, color: colours.textSecondary, lineHeight: 20 },
-  items: { marginTop: spacing.xs },
-  itemLine: { fontSize: fontSize.secondary, color: colours.textPrimary, lineHeight: 20 },
-  message: {
-    fontSize: fontSize.secondary,
-    color: colours.textSecondary,
-    fontStyle: 'italic',
-    marginTop: spacing.xs,
-    lineHeight: 20,
-  },
-  rejection: {
-    fontSize: fontSize.secondary,
-    color: colours.critical,
-    marginTop: spacing.xs,
-    lineHeight: 20,
-  },
-  accepted: {
-    fontSize: fontSize.secondary,
-    color: colours.accent,
-    marginTop: spacing.xs,
-    lineHeight: 20,
-  },
-  sent: { fontSize: fontSize.label, color: colours.textSecondary, marginTop: spacing.sm },
-  cancelButton: { marginTop: spacing.sm },
-  error: {
-    color: colours.critical,
-    fontSize: fontSize.secondary,
-    marginBottom: spacing.sm,
-  },
-});
+  line: { flexDirection: 'row', alignItems: 'center', gap: t.spacing.sm },
+  timeline: { marginTop: t.spacing.md },
+  cancel: { alignSelf: 'flex-end', marginTop: t.spacing.xs },
+}));
