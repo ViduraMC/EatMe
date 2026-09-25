@@ -46,6 +46,7 @@ export { Badge, StatusPill } from './Badge';
 export { UrgencyBadge } from './UrgencyBadge';
 export { FreshnessRing } from './FreshnessRing';
 export { ProgressBar } from './ProgressBar';
+export { BarChart, type BarGroup, type BarSeries } from './BarChart';
 export { StatTile } from './StatTile';
 export { Avatar } from './Avatar';
 export { ListRow } from './ListRow';

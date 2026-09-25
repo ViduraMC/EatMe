@@ -150,7 +150,8 @@ export type DriverTabProps<T extends keyof DriverTabParamList> = CompositeScreen
 
 export type AdminTabParamList = {
   AdminHome: undefined;
-  AdminUsers: undefined;
+  /** Opens Users already filtered, e.g. to the recipients awaiting approval. */
+  AdminUsers: { filter?: 'pending' } | undefined;
   AdminReports: undefined;
   AdminProfile: undefined;
 };
