@@ -1,11 +1,5 @@
 import React, { useRef, useState } from 'react';
-import {
-  KeyboardAvoidingView,
-  ScrollView,
-  View,
-  useWindowDimensions,
-  type TextInput,
-} from 'react-native';
+import { View, useWindowDimensions, type TextInput } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Path } from 'react-native-svg';
@@ -13,12 +7,14 @@ import Animated from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import {
+  FormScrollView,
   AppText,
   Button,
   Chip,
   ChipRow,
   Divider,
   InfoBanner,
+  KeyboardAvoider,
   Logo,
   TextField,
   useToast,
@@ -84,8 +80,8 @@ export function LoginScreen({ navigation }: Props) {
   return (
     <View style={styles.root}>
       <StatusBar style="light" />
-      <KeyboardAvoidingView style={styles.root} behavior="padding">
-        <ScrollView
+      <KeyboardAvoider>
+        <FormScrollView
           contentContainerStyle={styles.scroll}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
@@ -210,7 +206,8 @@ export function LoginScreen({ navigation }: Props) {
                 <AppText variant="caption" color="textTertiary" style={styles.demoHint}>
                   {t('auth.demoHint')}
                 </AppText>
-                <ChipRow>
+                {/* Scrolls to the dashed box's edge, not the screen's. */}
+                <ChipRow bleed={theme.spacing.md}>
                   {DEMO.map((d) => (
                     <Chip
                       key={d.email}
@@ -230,8 +227,8 @@ export function LoginScreen({ navigation }: Props) {
             ) : null}
           </Animated.View>
           <View style={{ height: insets.bottom + theme.spacing.lg }} />
-        </ScrollView>
-      </KeyboardAvoidingView>
+        </FormScrollView>
+      </KeyboardAvoider>
     </View>
   );
 }

@@ -1,5 +1,5 @@
-import React, { useRef, useState } from 'react';
-import { KeyboardAvoidingView, View, type StyleProp, type ViewStyle } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { Keyboard, View, type StyleProp, type ViewStyle } from 'react-native';
 import {
   SafeAreaView,
   useSafeAreaInsets,
@@ -15,6 +15,7 @@ import Animated, {
   type SharedValue,
 } from 'react-native-reanimated';
 import { AppText } from './AppText';
+import { KeyboardAvoider } from './KeyboardAvoider';
 import { makeStyles, useTheme } from '../theme';
 import { enterFromBelow, useReducedMotion } from '../theme/animations';
 import { scheduleOnRN } from 'react-native-worklets';
@@ -46,17 +47,9 @@ export function Screen({
   const styles = useStyles();
   const insets = useSafeAreaInsets();
   const reduced = useReducedMotion();
-  // KeyboardAvoidingView compares the keyboard's position on screen with its
-  // own position *relative to its parent*. Under a navigation header those
-  // differ by the header's height, so the fields near the bottom stayed
-  // hidden. Measuring where this screen really starts on screen and passing
-  // it as keyboardVerticalOffset makes the two line up on every screen.
-  const frameRef = useRef<View>(null);
-  const [offset, setOffset] = useState(0);
-  const measure = () =>
-    frameRef.current?.measureInWindow((_x, y) => {
-      if (Number.isFinite(y)) setOffset(Math.round(y));
-    });
+  // While the keyboard is up the footer sits on top of it, so the gap kept
+  // for the phone's gesture bar is no longer needed.
+  const keyboardUp = useKeyboardVisible(avoidKeyboard);
 
   const inner = (
     <>
@@ -64,7 +57,10 @@ export function Screen({
       {footer ? (
         <Animated.View
           entering={enterFromBelow(reduced)}
-          style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 12) + 4 }]}
+          style={[
+            styles.footer,
+            { paddingBottom: keyboardUp ? 12 : Math.max(insets.bottom, 12) + 4 },
+          ]}
         >
           {footer}
         </Animated.View>
@@ -74,26 +70,23 @@ export function Screen({
 
   return (
     <SafeAreaView style={styles.safe} edges={edges}>
-      {avoidKeyboard ? (
-        // The wrapper sits exactly where the KeyboardAvoidingView's parent
-        // does, so its window position is the offset the maths needs.
-        // 'padding' on Android too: Expo SDK 57 draws edge-to-edge, so the
-        // window no longer resizes for the keyboard (adjustResize is ignored)
-        // and without this the keyboard covers the lower fields.
-        <View ref={frameRef} style={styles.flex} onLayout={measure} collapsable={false}>
-          <KeyboardAvoidingView
-            style={styles.flex}
-            behavior="padding"
-            keyboardVerticalOffset={offset}
-          >
-            {inner}
-          </KeyboardAvoidingView>
-        </View>
-      ) : (
-        inner
-      )}
+      {avoidKeyboard ? <KeyboardAvoider>{inner}</KeyboardAvoider> : inner}
     </SafeAreaView>
   );
+}
+
+function useKeyboardVisible(enabled: boolean): boolean {
+  const [visible, setVisible] = useState(false);
+  useEffect(() => {
+    if (!enabled) return;
+    const show = Keyboard.addListener('keyboardDidShow', () => setVisible(true));
+    const hide = Keyboard.addListener('keyboardDidHide', () => setVisible(false));
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, [enabled]);
+  return visible;
 }
 
 /** Tracks vertical scroll on the UI thread, for collapsing headers. */

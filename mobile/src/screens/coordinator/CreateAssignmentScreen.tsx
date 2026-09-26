@@ -1,8 +1,9 @@
 import React, { useCallback, useState } from 'react';
-import { ScrollView, View } from 'react-native';
+import { View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { useFocusEffect } from '@react-navigation/native';
 import {
+  FormScrollView,
   AppText,
   Avatar,
   Button,
@@ -159,7 +160,7 @@ export function CreateAssignmentScreen({
         />
       }
     >
-      <ScrollView
+      <FormScrollView
         contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
@@ -237,7 +238,7 @@ export function CreateAssignmentScreen({
         {formError ? (
           <InfoBanner tone="critical" message={formError} style={styles.error} />
         ) : null}
-      </ScrollView>
+      </FormScrollView>
     </Screen>
   );
 }

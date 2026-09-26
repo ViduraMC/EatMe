@@ -20,6 +20,8 @@ export {
 
 // Layout
 export { Screen, LargeTitle, TopBar, useScrollY } from './Screen';
+export { KeyboardAvoider } from './KeyboardAvoider';
+export { FormScrollView } from './FormScrollView';
 export { SectionHeader } from './SectionHeader';
 export { Divider } from './Divider';
 export { EatMeTabBar, type TabIcons } from './TabBar';

@@ -1,8 +1,9 @@
 import React, { useCallback, useState } from 'react';
-import { ScrollView, View } from 'react-native';
+import { View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { CommonActions, useFocusEffect } from '@react-navigation/native';
 import {
+  FormScrollView,
   AppText,
   BottomSheet,
   Button,
@@ -167,7 +168,7 @@ export function CreateRequestScreen({
         </>
       }
     >
-      <ScrollView
+      <FormScrollView
         contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
@@ -251,7 +252,7 @@ export function CreateRequestScreen({
         {formError ? (
           <InfoBanner tone="critical" message={formError} style={styles.error} />
         ) : null}
-      </ScrollView>
+      </FormScrollView>
 
       <BottomSheet visible={sent} onClose={finish}>
         <View style={styles.success}>

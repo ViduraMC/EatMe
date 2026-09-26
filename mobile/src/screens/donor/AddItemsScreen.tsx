@@ -1,8 +1,9 @@
 import React, { useMemo, useRef, useState } from 'react';
-import { ScrollView, View, type TextInput } from 'react-native';
+import { View, type TextInput } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { CommonActions } from '@react-navigation/native';
 import {
+  FormScrollView,
   AppText,
   Badge,
   BottomSheet,
@@ -260,7 +261,7 @@ export function AddItemsScreen({ navigation, route }: DonorStackProps<'AddItems'
         />
       }
     >
-      <ScrollView
+      <FormScrollView
         contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
@@ -538,7 +539,7 @@ export function AddItemsScreen({ navigation, route }: DonorStackProps<'AddItems'
         {formError ? (
           <InfoBanner tone="critical" message={formError} style={styles.formError} />
         ) : null}
-      </ScrollView>
+      </FormScrollView>
 
       <BottomSheet visible={!!published} onClose={() => finish(false)} dismissible>
         <View style={styles.success}>

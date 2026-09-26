@@ -1,7 +1,8 @@
 import React, { useRef, useState } from 'react';
-import { ScrollView, View, type TextInput } from 'react-native';
+import { View, type TextInput } from 'react-native';
 import Animated from 'react-native-reanimated';
 import {
+  FormScrollView,
   AppText,
   Button,
   Chip,
@@ -111,7 +112,7 @@ export function CreateListingScreen({ navigation }: DonorStackProps<'CreateListi
         />
       }
     >
-      <ScrollView
+      <FormScrollView
         contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
@@ -240,7 +241,7 @@ export function CreateListingScreen({ navigation }: DonorStackProps<'CreateListi
             ))}
           </ChipRow>
         </Animated.View>
-      </ScrollView>
+      </FormScrollView>
     </Screen>
   );
 }

@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react';
-import { ScrollView, View, type TextInput } from 'react-native';
+import { View, type TextInput } from 'react-native';
 import Animated, {
   FadeIn,
   SlideInLeft,
@@ -9,6 +9,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import {
+  FormScrollView,
   AppText,
   Button,
   ChoiceCard,
@@ -209,7 +210,7 @@ export function RegisterScreen({ navigation }: Props) {
         </View>
       </View>
 
-      <ScrollView
+      <FormScrollView
         contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
@@ -395,7 +396,7 @@ export function RegisterScreen({ navigation }: Props) {
             onPress={() => navigation.navigate('Login')}
           />
         </View>
-      </ScrollView>
+      </FormScrollView>
     </Screen>
   );
 }
