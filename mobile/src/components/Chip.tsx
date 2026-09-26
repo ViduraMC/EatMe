@@ -87,21 +87,31 @@ export function Chip({
   );
 }
 
-/** A horizontally scrolling row of chips that bleeds to the screen edges. */
+/**
+ * A horizontally scrolling row of chips that bleeds to the edges of its
+ * container, so chips scroll off the edge instead of being cut short.
+ * `bleed` is the container's side padding: the screen's by default, or a
+ * card's when the row sits inside a card (otherwise the chips would slide
+ * over the card's border).
+ */
 export function ChipRow({
   children,
+  bleed,
   style,
 }: {
   children: React.ReactNode;
+  bleed?: number;
   style?: StyleProp<ViewStyle>;
 }) {
+  const theme = useTheme();
   const styles = useStyles();
+  const edge = bleed ?? theme.layout.screenPadding;
   return (
     <ScrollView
       horizontal
       showsHorizontalScrollIndicator={false}
-      contentContainerStyle={styles.rowContent}
-      style={[styles.row, style]}
+      contentContainerStyle={[styles.rowContent, { paddingHorizontal: edge }]}
+      style={[styles.row, { marginHorizontal: -edge }, style]}
     >
       {children}
     </ScrollView>
@@ -129,9 +139,8 @@ const useStyles = makeStyles((t) => ({
     justifyContent: 'center',
   },
   countText: { fontSize: 11, lineHeight: 14 },
-  row: { marginHorizontal: -t.layout.screenPadding, flexGrow: 0 },
+  row: { flexGrow: 0 },
   rowContent: {
-    paddingHorizontal: t.layout.screenPadding,
     gap: t.spacing.sm,
     paddingVertical: t.spacing.xs,
   },

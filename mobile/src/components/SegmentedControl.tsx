@@ -30,6 +30,11 @@ interface SegmentedControlProps<T extends string> {
   onChange: (value: T) => void;
   /** Read out before the options, e.g. "Food type". */
   accessibilityLabel?: string;
+  /**
+   * Icon above the label, with room for two lines. For three or more
+   * options whose labels would otherwise be cut off ("Room temperature").
+   */
+  stacked?: boolean;
   style?: StyleProp<ViewStyle>;
 }
 
@@ -44,6 +49,7 @@ export function SegmentedControl<T extends string>({
   value,
   onChange,
   accessibilityLabel,
+  stacked = false,
   style,
 }: SegmentedControlProps<T>) {
   const theme = useTheme();
@@ -70,13 +76,20 @@ export function SegmentedControl<T extends string>({
 
   return (
     <View
-      style={[styles.track, style]}
+      style={[styles.track, stacked && styles.trackStacked, style]}
       onLayout={(e: LayoutChangeEvent) => setWidth(e.nativeEvent.layout.width)}
       accessibilityRole="radiogroup"
       accessibilityLabel={accessibilityLabel}
     >
       {segmentWidth > 0 ? (
-        <Animated.View style={[styles.thumb, { width: segmentWidth }, thumbStyle]} />
+        <Animated.View
+          style={[
+            styles.thumb,
+            stacked && styles.thumbStacked,
+            { width: segmentWidth },
+            thumbStyle,
+          ]}
+        />
       ) : null}
       {segments.map((segment) => {
         const selected = segment.value === value;
@@ -93,7 +106,7 @@ export function SegmentedControl<T extends string>({
             accessibilityRole="radio"
             accessibilityLabel={segment.label}
             accessibilityState={{ checked: selected }}
-            style={styles.segment}
+            style={[styles.segment, stacked && styles.segmentStacked]}
           >
             {segment.icon ? (
               <Icon
@@ -105,7 +118,8 @@ export function SegmentedControl<T extends string>({
             <AppText
               variant="secondaryStrong"
               color={selected ? 'text' : 'textSecondary'}
-              numberOfLines={1}
+              numberOfLines={stacked ? 2 : 1}
+              align="center"
             >
               {segment.label}
             </AppText>
@@ -132,6 +146,14 @@ const useStyles = makeStyles((t) => ({
     borderRadius: t.radius.pill,
     backgroundColor: t.colors.surfaceElevated,
     ...t.elevation(1),
+  },
+  trackStacked: { borderRadius: t.radius.md },
+  thumbStacked: { borderRadius: t.radius.md - 2 },
+  segmentStacked: {
+    flexDirection: 'column',
+    gap: 2,
+    paddingVertical: t.spacing.sm,
+    paddingHorizontal: t.spacing.xs,
   },
   segment: {
     flex: 1,

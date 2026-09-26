@@ -28,7 +28,8 @@ import { createListing } from '../../api/donations.api';
 import { useI18n, type TKey } from '../../i18n';
 import { describeError } from '../../i18n/errors';
 import { useFormat } from '../../i18n/format';
-import { makeStyles } from '../../theme';
+import { makeStyles, spacing } from '../../theme';
+
 import {
   enterListItem,
   enterSection,
@@ -45,6 +46,9 @@ import type {
   StorageType,
 } from '../../types/donation';
 import type { DonorStackProps } from '../../navigation/types';
+
+/** The Card's padding, so chip rows inside the form scroll to its edge. */
+const CARD_PADDING = spacing.md;
 
 const HOUR = 3_600_000;
 const MAX_ITEMS = 20;
@@ -421,7 +425,7 @@ export function AddItemsScreen({ navigation, route }: DonorStackProps<'AddItems'
                 </AppText>
               }
             />
-            <ChipRow style={styles.units}>
+            <ChipRow style={styles.units} bleed={CARD_PADDING}>
               {UNITS.map((u) => (
                 <Chip
                   key={u}
@@ -439,6 +443,7 @@ export function AddItemsScreen({ navigation, route }: DonorStackProps<'AddItems'
               accessibilityLabel={t('donor.storageLabel')}
               value={storage}
               onChange={setStorage}
+              stacked
               segments={[
                 { value: 'ambient', label: t('storage.ambient'), icon: 'sunny-outline' },
                 {
@@ -500,7 +505,7 @@ export function AddItemsScreen({ navigation, route }: DonorStackProps<'AddItems'
                     label={t('donor.safeWindow')}
                   />
                 </View>
-                <ChipRow style={styles.units}>
+                <ChipRow style={styles.units} bleed={CARD_PADDING}>
                   {WINDOWS.map((h) => (
                     <Chip
                       key={h}
