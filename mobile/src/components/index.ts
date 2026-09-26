@@ -19,7 +19,7 @@ export {
 } from './illustrations/Illustration';
 
 // Layout
-export { Screen, ScreenContainer, LargeTitle, TopBar, useScrollY } from './Screen';
+export { Screen, LargeTitle, TopBar, useScrollY } from './Screen';
 export { SectionHeader } from './SectionHeader';
 export { Divider } from './Divider';
 export { EatMeTabBar, type TabIcons } from './TabBar';

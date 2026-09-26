@@ -1,11 +1,5 @@
-import React from 'react';
-import {
-  KeyboardAvoidingView,
-  Platform,
-  View,
-  type StyleProp,
-  type ViewStyle,
-} from 'react-native';
+import React, { useRef, useState } from 'react';
+import { KeyboardAvoidingView, View, type StyleProp, type ViewStyle } from 'react-native';
 import {
   SafeAreaView,
   useSafeAreaInsets,
@@ -14,6 +8,7 @@ import {
 import Animated, {
   Extrapolation,
   interpolate,
+  useAnimatedReaction,
   useAnimatedScrollHandler,
   useAnimatedStyle,
   useSharedValue,
@@ -22,6 +17,7 @@ import Animated, {
 import { AppText } from './AppText';
 import { makeStyles, useTheme } from '../theme';
 import { enterFromBelow, useReducedMotion } from '../theme/animations';
+import { scheduleOnRN } from 'react-native-worklets';
 
 interface ScreenProps {
   children: React.ReactNode;
@@ -50,6 +46,17 @@ export function Screen({
   const styles = useStyles();
   const insets = useSafeAreaInsets();
   const reduced = useReducedMotion();
+  // KeyboardAvoidingView compares the keyboard's position on screen with its
+  // own position *relative to its parent*. Under a navigation header those
+  // differ by the header's height, so the fields near the bottom stayed
+  // hidden. Measuring where this screen really starts on screen and passing
+  // it as keyboardVerticalOffset makes the two line up on every screen.
+  const frameRef = useRef<View>(null);
+  const [offset, setOffset] = useState(0);
+  const measure = () =>
+    frameRef.current?.measureInWindow((_x, y) => {
+      if (Number.isFinite(y)) setOffset(Math.round(y));
+    });
 
   const inner = (
     <>
@@ -68,51 +75,24 @@ export function Screen({
   return (
     <SafeAreaView style={styles.safe} edges={edges}>
       {avoidKeyboard ? (
-        <KeyboardAvoidingView
-          style={styles.flex}
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        >
-          {inner}
-        </KeyboardAvoidingView>
+        // The wrapper sits exactly where the KeyboardAvoidingView's parent
+        // does, so its window position is the offset the maths needs.
+        // 'padding' on Android too: Expo SDK 57 draws edge-to-edge, so the
+        // window no longer resizes for the keyboard (adjustResize is ignored)
+        // and without this the keyboard covers the lower fields.
+        <View ref={frameRef} style={styles.flex} onLayout={measure} collapsable={false}>
+          <KeyboardAvoidingView
+            style={styles.flex}
+            behavior="padding"
+            keyboardVerticalOffset={offset}
+          >
+            {inner}
+          </KeyboardAvoidingView>
+        </View>
       ) : (
         inner
       )}
     </SafeAreaView>
-  );
-}
-
-/**
- * The old ScreenContainer API (scroll, avoidKeyboard, edges, style), kept so
- * screens that have not been redesigned yet still compile.
- */
-export function ScreenContainer({
-  children,
-  scroll = false,
-  avoidKeyboard = false,
-  edges = ['top', 'left', 'right', 'bottom'],
-  style,
-}: {
-  children: React.ReactNode;
-  scroll?: boolean;
-  avoidKeyboard?: boolean;
-  edges?: readonly Edge[];
-  style?: StyleProp<ViewStyle>;
-}) {
-  const styles = useStyles();
-  return (
-    <Screen edges={edges} avoidKeyboard={avoidKeyboard}>
-      {scroll ? (
-        <Animated.ScrollView
-          contentContainerStyle={[styles.padded, style]}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-        >
-          {children}
-        </Animated.ScrollView>
-      ) : (
-        <View style={[styles.flex, styles.padded, style]}>{children}</View>
-      )}
-    </Screen>
   );
 }
 
@@ -188,8 +168,10 @@ export function LargeTitle({
 }
 
 /**
- * A slim bar pinned to the top of a tab. Its title and hairline fade in only
- * once the large title has scrolled away.
+ * A slim bar pinned over the top of a tab. It takes no space while the large
+ * title is showing; its background, title and actions fade in only once the
+ * large title has scrolled away. (It used to reserve 52dp of empty space and
+ * repeat the large title's avatar, so tabs showed two avatars and a gap.)
  */
 export function TopBar({
   title,
@@ -209,28 +191,48 @@ export function TopBar({
     ],
   }));
   const barStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(scrollY.value, [30, 70], [0, 1], Extrapolation.CLAMP),
     borderBottomColor: scrollY.value > 60 ? theme.colors.border : 'transparent',
   }));
+  // Actions only take touches once they are visible, so the invisible bar
+  // never swallows taps meant for the large title underneath.
+  const [shown, setShown] = useState(false);
+  useAnimatedReaction(
+    () => scrollY.value > 50,
+    (now, before) => {
+      if (now !== before) scheduleOnRN(setShown, now);
+    },
+  );
 
   return (
-    <Animated.View style={[styles.topBar, barStyle]}>
-      <Animated.View
-        style={[styles.flex, titleStyle]}
-        importantForAccessibility="no-hide-descendants"
-      >
-        <AppText variant="subtitle" numberOfLines={1}>
-          {title}
-        </AppText>
-      </Animated.View>
-      {right ? <View style={styles.right}>{right}</View> : null}
-    </Animated.View>
+    <View style={styles.topBarWrap} pointerEvents="box-none">
+      <Animated.View style={[styles.topBarBg, barStyle]} pointerEvents="none" />
+      <View style={styles.topBar} pointerEvents="box-none">
+        <Animated.View
+          style={[styles.flex, titleStyle]}
+          pointerEvents="none"
+          importantForAccessibility="no-hide-descendants"
+        >
+          <AppText variant="subtitle" numberOfLines={1}>
+            {title}
+          </AppText>
+        </Animated.View>
+        {right ? (
+          <Animated.View
+            style={[styles.right, titleStyle]}
+            pointerEvents={shown ? 'auto' : 'none'}
+          >
+            {right}
+          </Animated.View>
+        ) : null}
+      </View>
+    </View>
   );
 }
 
 const useStyles = makeStyles((t) => ({
   safe: { flex: 1, backgroundColor: t.colors.background },
   flex: { flex: 1 },
-  padded: { flexGrow: 1, padding: t.layout.screenPadding },
   footer: {
     paddingHorizontal: t.layout.screenPadding,
     paddingTop: t.spacing.sm + 4,
@@ -243,19 +245,26 @@ const useStyles = makeStyles((t) => ({
     flexDirection: 'row',
     alignItems: 'flex-end',
     gap: t.spacing.md,
-    paddingTop: t.spacing.xs,
+    paddingTop: t.spacing.md + 4,
     paddingBottom: t.spacing.md,
   },
   subtitle: { marginTop: 2 },
   right: { flexDirection: 'row', alignItems: 'center', gap: t.spacing.sm },
+  topBarWrap: { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 2 },
+  topBarBg: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: t.colors.background,
+    borderBottomWidth: 1,
+  },
   topBar: {
     height: 52,
     flexDirection: 'row',
     alignItems: 'center',
     gap: t.spacing.md,
     paddingHorizontal: t.layout.screenPadding,
-    backgroundColor: t.colors.background,
-    borderBottomWidth: 1,
-    zIndex: 2,
   },
 }));

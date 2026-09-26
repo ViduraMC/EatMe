@@ -103,7 +103,7 @@ export function ConfirmPickupScreen({ route }: DonorTabProps<'ConfirmPickup'>) {
     );
 
   return (
-    <Screen>
+    <Screen avoidKeyboard>
       <TopBar title={t('donor.pickupsTitle')} scrollY={scrollY} />
       <Animated.FlatList
         data={loading || error ? [] : assignments}
