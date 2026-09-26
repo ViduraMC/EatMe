@@ -15,7 +15,6 @@ import {
   ErrorState,
   Icon,
   LargeTitle,
-  PressableScale,
   Screen,
   SectionHeader,
   SkeletonList,
@@ -403,32 +402,33 @@ function QueueCard({
         </View>
       ) : null}
 
+      {expiry ? (
+        <UrgencyBadge
+          level={level}
+          timeLeft={f.timeLeft(expiry, now)}
+          size="sm"
+          style={styles.urgency}
+        />
+      ) : null}
+
+      {/* Buttons get their own full-width row, so the long "Assign driver"
+          label (and its Sinhala translation) never runs past the card. */}
       <View style={styles.actions}>
-        {expiry ? (
-          <UrgencyBadge level={level} timeLeft={f.timeLeft(expiry, now)} size="sm" />
-        ) : (
-          <View />
-        )}
-        <View style={styles.buttons}>
-          <PressableScale
-            onPress={onDecline}
-            hitSlop={8}
-            accessibilityRole="button"
-            accessibilityLabel={`${t('coordinator.decline')}, ${who}`}
-            style={styles.declineBtn}
-          >
-            <AppText variant="secondaryStrong" color="criticalText">
-              {t('coordinator.decline')}
-            </AppText>
-          </PressableScale>
-          <Button
-            label={t('coordinator.assignDriver')}
-            size="sm"
-            inline
-            icon="mc:truck-plus-outline"
-            onPress={onAssign}
-          />
-        </View>
+        <Button
+          label={t('coordinator.decline')}
+          variant="secondary"
+          size="sm"
+          onPress={onDecline}
+          accessibilityHint={who}
+          style={styles.flex}
+        />
+        <Button
+          label={t('coordinator.assignDriver')}
+          size="sm"
+          icon="mc:truck-plus-outline"
+          onPress={onAssign}
+          style={styles.assign}
+        />
       </View>
     </Card>
   );
@@ -460,15 +460,14 @@ const useStyles = makeStyles((t) => ({
   },
   quote: { flexDirection: 'row', gap: t.spacing.sm, marginTop: t.spacing.sm + 4 },
   italic: { fontStyle: 'italic' },
+  urgency: { alignSelf: 'flex-start', marginTop: t.spacing.sm + 4 },
   actions: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
     marginTop: t.spacing.md,
-    gap: t.spacing.sm,
+    gap: t.spacing.sm + 2,
   },
-  buttons: { flexDirection: 'row', alignItems: 'center', gap: t.spacing.md },
-  declineBtn: { paddingVertical: t.spacing.sm, paddingHorizontal: t.spacing.xs },
+  assign: { flex: 1.6 },
   reasons: { marginBottom: t.spacing.md },
   sheetActions: { flexDirection: 'row', gap: t.spacing.sm + 4 },
 }));
