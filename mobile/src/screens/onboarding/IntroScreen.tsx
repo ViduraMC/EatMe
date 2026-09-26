@@ -169,8 +169,11 @@ function SlideView({
       accessibilityLabel={`${t(slide.title)}. ${t(slide.body)}`}
       accessibilityHint={t('onboarding.slideOf', { n: index + 1, total: SLIDES.length })}
     >
+      {/* The art sits inside the coloured panel and the text below it; they
+          share the panel's height so a long (or Sinhala) title can never
+          run into the panel's curved edge. */}
       <Animated.View style={[styles.artWrap, artStyle]}>
-        <Illustration name={slide.art} width={Math.min(320, width * 0.82)} />
+        <Illustration name={slide.art} width={Math.min(300, width * 0.78)} />
       </Animated.View>
       <Animated.View style={[styles.text, textStyle]}>
         <AppText variant="title" align="center">
@@ -218,6 +221,9 @@ function Dot({
   return <Animated.View style={[{ height: 8, borderRadius: 4 }, style]} />;
 }
 
+/** Height of the coloured panel behind the art, shared by art and backdrop. */
+const PANEL = '56%' as const;
+
 const useStyles = makeStyles((t) => ({
   flex: { flex: 1 },
   backdrop: {
@@ -225,17 +231,21 @@ const useStyles = makeStyles((t) => ({
     top: 0,
     left: 0,
     right: 0,
-    height: '62%',
+    height: PANEL,
     borderBottomLeftRadius: 48,
     borderBottomRightRadius: 48,
   },
   slide: {
     flex: 1,
     paddingHorizontal: t.layout.screenPadding + 8,
-    justifyContent: 'center',
   },
-  artWrap: { alignItems: 'center', marginBottom: t.spacing.xl },
-  text: { gap: t.spacing.sm },
+  artWrap: {
+    height: PANEL,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingTop: t.spacing.md,
+  },
+  text: { flex: 1, gap: t.spacing.sm, paddingTop: t.spacing.xl },
   body: { marginTop: t.spacing.xs },
   footerRow: {
     flexDirection: 'row',
