@@ -110,6 +110,7 @@ export const si: Widen<Dictionary> = {
     greetingMorning: 'සුබ උදෑසනක්',
     greetingAfternoon: 'සුබ දහවලක්',
     greetingEvening: 'සුබ සන්ධ්‍යාවක්',
+    nowInline: 'දැන්',
   },
 
   status: {

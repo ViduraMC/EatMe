@@ -133,7 +133,7 @@ export const darkPalette: Palette = {
   background: '#141210',
   surface: '#1E1B18',
   surfaceMuted: '#2A2622',
-  surfaceElevated: '#25211D',
+  surfaceElevated: '#322D28',
   scrim: 'rgba(0, 0, 0, 0.62)',
 
   border: '#35302A',
@@ -145,12 +145,12 @@ export const darkPalette: Palette = {
 
   brand: '#C0512B',
   brandPressed: '#A8441F',
-  brandSoft: '#35251D',
+  brandSoft: '#30241E',
   brandText: '#EE9670',
   onBrand: '#FFFFFF',
 
   olive: '#66763A',
-  oliveSoft: '#272A1F',
+  oliveSoft: '#25281F',
   oliveText: '#BAC784',
   onOlive: '#FFFFFF',
 

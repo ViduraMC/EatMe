@@ -106,7 +106,7 @@ function build(t: T, language: Language) {
   const relative = (value: string | Date, now = Date.now()): string => {
     const diff = toDate(value).getTime() - now;
     const abs = Math.abs(diff);
-    if (abs < MINUTE) return t('time.now');
+    if (abs < MINUTE) return t('time.nowInline');
     const future = diff > 0;
     if (abs < HOUR) {
       const count = Math.round(abs / MINUTE);

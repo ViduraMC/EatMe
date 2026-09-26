@@ -24,8 +24,10 @@ export function artColors(theme: Theme): ArtColors {
         blobAlt: c.oliveSoft,
         primary: c.brand,
         primaryDark: c.brandPressed,
-        secondary: c.olive,
-        secondaryDark: '#7F8F48',
+        // Brighter than the olive token (which is tuned for white button
+        // labels), so leaves and hearts don't sink into the dark panel.
+        secondary: '#8C9D56',
+        secondaryDark: '#6E7E3E',
         accent: c.urgent,
         cream: '#F3E6D2',
         line: '#120C08',

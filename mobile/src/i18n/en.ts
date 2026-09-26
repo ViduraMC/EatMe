@@ -111,6 +111,7 @@ export const en = {
     greetingMorning: 'Good morning',
     greetingAfternoon: 'Good afternoon',
     greetingEvening: 'Good evening',
+    nowInline: 'just now',
   },
 
   status: {
