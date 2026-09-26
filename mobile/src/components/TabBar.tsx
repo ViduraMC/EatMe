@@ -109,11 +109,7 @@ export function EatMeTabBar({
           />
           {badge !== undefined ? (
             <View style={styles.badge}>
-              <AppText
-                variant="caption"
-                color={theme.isDark ? theme.colors.onBrand : '#FFFFFF'}
-                style={styles.badgeText}
-              >
+              <AppText variant="caption" color="#FFFFFF" style={styles.badgeText}>
                 {String(badge)}
               </AppText>
             </View>

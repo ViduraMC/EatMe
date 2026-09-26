@@ -25,11 +25,11 @@ export function artColors(theme: Theme): ArtColors {
         primary: c.brand,
         primaryDark: c.brandPressed,
         secondary: c.olive,
-        secondaryDark: '#86964F',
+        secondaryDark: '#7F8F48',
         accent: c.urgent,
         cream: '#F3E6D2',
         line: '#120C08',
-        faint: '#5A4A3C',
+        faint: '#4A433C',
       }
     : {
         blob: c.brandSoft,

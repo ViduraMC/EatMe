@@ -121,52 +121,59 @@ export const lightPalette: Palette = {
   heroGradient: ['#B84A26', '#D9733F'],
 };
 
+/**
+ * Dark mode keeps the light theme's character instead of inverting it: the
+ * same terracotta with white labels, on warm charcoal rather than brown, so
+ * the brand reads the same in both themes. Tints are low-saturation so
+ * panels and pills look like the light theme dimmed, not like new colours.
+ * (The first version used a pale salmon brand with dark labels and
+ * maroon/swamp-green tints, which testers found unnatural.)
+ */
 export const darkPalette: Palette = {
-  background: '#16110D',
-  surface: '#211A15',
-  surfaceMuted: '#2C231C',
-  surfaceElevated: '#2A211B',
-  scrim: 'rgba(0, 0, 0, 0.6)',
+  background: '#141210',
+  surface: '#1E1B18',
+  surfaceMuted: '#2A2622',
+  surfaceElevated: '#25211D',
+  scrim: 'rgba(0, 0, 0, 0.62)',
 
-  border: '#3A2F26',
-  borderStrong: '#857060',
+  border: '#35302A',
+  borderStrong: '#7F7468',
 
-  text: '#F6EEE4',
-  textSecondary: '#C4B4A4',
-  textTertiary: '#9C8B7B',
+  text: '#F3EDE6',
+  textSecondary: '#BFB5AA',
+  textTertiary: '#978C81',
 
-  brand: '#E27D55',
-  brandPressed: '#C9663F',
-  brandSoft: '#3A2419',
-  brandText: '#F09A76',
-  // Terracotta is light in dark mode, so its label is dark, not white.
-  onBrand: '#1F140D',
+  brand: '#C0512B',
+  brandPressed: '#A8441F',
+  brandSoft: '#35251D',
+  brandText: '#EE9670',
+  onBrand: '#FFFFFF',
 
-  olive: '#A7B66A',
-  oliveSoft: '#2C3019',
-  oliveText: '#BFCB88',
-  onOlive: '#1A1D0C',
+  olive: '#66763A',
+  oliveSoft: '#272A1F',
+  oliveText: '#BAC784',
+  onOlive: '#FFFFFF',
 
-  critical: '#F2766A',
-  criticalSoft: '#3B1814',
-  criticalText: '#F7A198',
+  critical: '#EC7264',
+  criticalSoft: '#381F1B',
+  criticalText: '#F5A398',
 
-  urgent: '#F0B03A',
-  urgentSoft: '#3A2A0E',
-  urgentText: '#F4C46A',
+  urgent: '#E5A93E',
+  urgentSoft: '#352A16',
+  urgentText: '#F0C470',
 
-  safe: '#9DBE6C',
-  safeSoft: '#22301A',
-  safeText: '#B5D18A',
+  safe: '#97B86A',
+  safeSoft: '#232C1D',
+  safeText: '#B1CE8A',
 
-  info: '#7FB0D3',
-  infoSoft: '#16283A',
-  infoText: '#9CC3DF',
+  info: '#7EACCD',
+  infoSoft: '#1C2630',
+  infoText: '#A0C3DD',
 
   shadow: '#000000',
-  skeletonBase: '#2A221C',
-  skeletonHighlight: '#3A3028',
-  heroGradient: ['#8E3A1E', '#B8552E'],
+  skeletonBase: '#25211D',
+  skeletonHighlight: '#322D28',
+  heroGradient: ['#9A3E1F', '#BE5530'],
 };
 
 /** Tones a badge, banner or icon container can take. */

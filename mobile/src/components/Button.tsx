@@ -69,7 +69,7 @@ export function Button({
     secondary: theme.colors.text,
     tonal: theme.colors.brandText,
     ghost: theme.colors.brandText,
-    danger: theme.isDark ? theme.colors.onBrand : '#FFFFFF',
+    danger: '#FFFFFF',
     dangerGhost: theme.colors.criticalText,
     success: theme.colors.onOlive,
   }[variant];
@@ -143,7 +143,10 @@ const useStyles = makeStyles((t) => ({
   },
   tonal: { backgroundColor: t.colors.brandSoft },
   ghost: { backgroundColor: 'transparent', paddingHorizontal: t.spacing.sm },
-  danger: { backgroundColor: t.colors.critical },
+  // In dark mode `critical` is a light red (so warnings read on charcoal);
+  // a filled button uses a deeper red instead, so it keeps a white label
+  // like every other filled button.
+  danger: { backgroundColor: t.isDark ? '#C84232' : t.colors.critical },
   dangerGhost: { backgroundColor: 'transparent', paddingHorizontal: t.spacing.sm },
   success: { backgroundColor: t.colors.olive, ...t.elevation(1) },
   disabled: { opacity: 0.45 },
