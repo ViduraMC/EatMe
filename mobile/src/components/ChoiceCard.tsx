@@ -6,6 +6,7 @@ import { Icon, type IconName } from './Icon';
 import { PressableScale } from './PressableScale';
 import { makeStyles, useTheme, type Tone } from '../theme';
 import { haptics } from '../utils/haptics';
+import type { Language } from '../i18n/types';
 
 interface ChoiceCardProps {
   title: string;
@@ -19,6 +20,8 @@ interface ChoiceCardProps {
   /** Radio for one-of-many (default), checkbox for many-of-many. */
   mode?: 'radio' | 'checkbox';
   disabled?: boolean;
+  /** Language of the title and description, if not the app's (see AppText). */
+  lang?: Language;
   style?: StyleProp<ViewStyle>;
 }
 
@@ -37,6 +40,7 @@ export function ChoiceCard({
   footer,
   mode = 'radio',
   disabled,
+  lang,
   style,
 }: ChoiceCardProps) {
   const theme = useTheme();
@@ -73,11 +77,11 @@ export function ChoiceCard({
         </View>
       ) : null}
       <View style={styles.body}>
-        <AppText variant="bodyStrong" color={selected ? c.fg : 'text'}>
+        <AppText variant="bodyStrong" color={selected ? c.fg : 'text'} lang={lang}>
           {title}
         </AppText>
         {description ? (
-          <AppText variant="secondary" color="textSecondary">
+          <AppText variant="secondary" color="textSecondary" lang={lang}>
             {description}
           </AppText>
         ) : null}

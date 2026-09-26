@@ -59,14 +59,15 @@ export function LanguageScreen({ navigation }: Props) {
         </Animated.View>
 
         <Animated.View entering={enterSection(2, reduced)}>
-          <AppText variant="title" align="center" accessibilityRole="header">
+          <AppText variant="title" align="center" accessibilityRole="header" lang="en">
             {translate('en', 'onboarding.languageTitle')}
           </AppText>
           <AppText
             variant="headline"
             align="center"
             color="textSecondary"
-            style={[styles.sinhala, { fontFamily: 'NotoSinhala-SemiBold' }]}
+            lang="si"
+            style={styles.sinhala}
           >
             {translate('si', 'onboarding.languageTitle')}
           </AppText>
@@ -79,6 +80,7 @@ export function LanguageScreen({ navigation }: Props) {
               title={translate(lang, `languageNames.${lang}`)}
               description={DESCRIPTION[lang]}
               icon={lang === 'en' ? 'mc:alphabet-latin' : 'mc:translate'}
+              lang={lang}
               selected={language === lang}
               onPress={() => setLanguage(lang)}
             />

@@ -86,7 +86,9 @@ export function IntroScreen() {
             )}
           </View>
           <Dots scrollX={scrollX} width={width} />
-          <View style={styles.flex}>
+          {/* The last button's label is longest ("Get started", and more so
+              in Sinhala), so it gets the space Skip no longer needs. */}
+          <View style={last ? styles.flexWide : styles.flex}>
             <Button
               label={last ? t('onboarding.getStarted') : t('common.next')}
               iconRight={last ? undefined : 'arrow-forward'}
@@ -226,6 +228,7 @@ const PANEL = '56%' as const;
 
 const useStyles = makeStyles((t) => ({
   flex: { flex: 1 },
+  flexWide: { flex: 2 },
   backdrop: {
     position: 'absolute',
     top: 0,
