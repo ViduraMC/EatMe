@@ -1,61 +1,74 @@
 import React, { useCallback, useMemo, useState } from 'react';
-import {
-  ActivityIndicator,
-  FlatList,
-  RefreshControl,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { RefreshControl, View } from 'react-native';
+import Animated from 'react-native-reanimated';
 import { useFocusEffect } from '@react-navigation/native';
-
-import { EmptyState } from '../../components';
-import { getErrorMessage } from '../../api/client';
+import {
+  Chip,
+  ChipRow,
+  EmptyState,
+  ErrorState,
+  LargeTitle,
+  Screen,
+  SkeletonList,
+  StatTile,
+  TopBar,
+  useScrollY,
+} from '../../components';
 import { fetchAssignments } from '../../api/driver.api';
-import { colours, fontSize, fontWeight, layout, spacing } from '../../constants/theme';
-import { isThisMonth } from '../../utils/datetime';
-import { FilterChips, type FilterOption } from './components/FilterChips';
+import { useNow } from '../../hooks/useNow';
+import { useI18n } from '../../i18n';
+import { makeStyles, useTheme } from '../../theme';
+import { enterListItem, enterSection, useReducedMotion } from '../../theme/animations';
+import type { DriverAssignment } from '../../types/driver';
+import type { DriverTabProps } from '../../navigation/types';
 import { HistoryRow } from './components/HistoryRow';
-import { StatCard, StatRow } from './components/StatCard';
-import type { AssignmentStatus, DriverAssignment } from '../../types';
+
+type Filter = 'all' | 'completed' | 'declined' | 'cancelled';
+const PAST: DriverAssignment['status'][] = ['completed', 'declined', 'cancelled'];
+
+function isThisMonth(iso: string, now: number): boolean {
+  const d = new Date(iso);
+  const n = new Date(now);
+  return d.getFullYear() === n.getFullYear() && d.getMonth() === n.getMonth();
+}
 
 /**
- * Delivery history. Figma frame "03 Driver History".
- *
- * The whole list is fetched once and filtered on the device rather than
- * refetching per chip: three statuses over one driver's assignments is a small
- * enough set that a round trip per tap is not worth it.
+ * Past deliveries. Fetched once and filtered on the device, so switching
+ * filters is instant and the totals at the top always match the list.
  */
+export function DeliveryHistoryScreen(_props: DriverTabProps<'DriverHistory'>) {
+  const theme = useTheme();
+  const styles = useStyles();
+  const { t } = useI18n();
+  const now = useNow(60_000);
+  const reduced = useReducedMotion();
+  const { scrollY, onScroll } = useScrollY();
 
-type Filter = 'all' | 'completed' | 'declined';
-
-const FILTERS: readonly FilterOption<Filter>[] = [
-  { value: 'all', label: 'All' },
-  { value: 'completed', label: 'Completed' },
-  { value: 'declined', label: 'Declined' },
-];
-
-/** Statuses that count as history. An assignment still in play is not one. */
-const PAST: readonly AssignmentStatus[] = ['completed', 'declined', 'cancelled'];
-
-export function DeliveryHistoryScreen() {
-  const [assignments, setAssignments] = useState<DriverAssignment[]>([]);
+  const [items, setItems] = useState<DriverAssignment[]>([]);
   const [filter, setFilter] = useState<Filter>('all');
-  const [isLoading, setIsLoading] = useState(true);
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<unknown>(null);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (isRefresh = false) => {
+    if (isRefresh) setRefreshing(true);
     try {
-      setError(null);
       const all = await fetchAssignments();
-      setAssignments(all.filter((item) => PAST.includes(item.status)));
-    } catch (caught) {
-      setError(getErrorMessage(caught));
+      setItems(
+        all
+          .filter((a) => PAST.includes(a.status))
+          .sort(
+            (a, b) =>
+              new Date(b.completedAt ?? b.assignedAt).getTime() -
+              new Date(a.completedAt ?? a.assignedAt).getTime(),
+          ),
+      );
+      setError(null);
+    } catch (err) {
+      setError(err);
     } finally {
-      setIsLoading(false);
-      setIsRefreshing(false);
+      setLoading(false);
+      setRefreshing(false);
     }
   }, []);
 
@@ -65,108 +78,136 @@ export function DeliveryHistoryScreen() {
     }, [load]),
   );
 
-  const onRefresh = useCallback(() => {
-    setIsRefreshing(true);
-    void load();
-  }, [load]);
-
-  /*
-   * TODO: GET /driver/stats only returns deliveriesToday and completedThisWeek,
-   * so these two are counted here. Move them to the endpoint once the list is
-   * paginated, because at that point the device will not have every row.
-   */
   const summary = useMemo(() => {
-    const completed = assignments.filter((item) => item.status === 'completed');
+    const completed = items.filter((a) => a.status === 'completed');
     return {
-      total: completed.length,
-      thisMonth: completed.filter((item) =>
-        isThisMonth(item.completedAt ?? item.assignedAt),
-      ).length,
+      completed: completed.length,
+      month: completed.filter((a) => isThisMonth(a.completedAt ?? a.assignedAt, now))
+        .length,
+      declined: items.filter((a) => a.status === 'declined').length,
+      cancelled: items.filter((a) => a.status === 'cancelled').length,
     };
-  }, [assignments]);
+  }, [items, now]);
 
-  const visible = useMemo(() => {
-    if (filter === 'all') {
-      return assignments;
-    }
-    return assignments.filter((item) => item.status === filter);
-  }, [assignments, filter]);
+  const visible = filter === 'all' ? items : items.filter((a) => a.status === filter);
 
-  if (isLoading) {
-    return (
-      <SafeAreaView style={styles.centre} edges={['top', 'left', 'right']}>
-        <ActivityIndicator size="large" color={colours.accent} />
-      </SafeAreaView>
+  const header = (
+    <View>
+      <LargeTitle
+        title={t('driver.historyTitle')}
+        subtitle={t('driver.historySubtitle')}
+        scrollY={scrollY}
+      />
+      {!loading && !error && items.length > 0 ? (
+        <>
+          <Animated.View entering={enterSection(0, reduced)} style={styles.stats}>
+            <StatTile
+              label={t('driver.statCompleted')}
+              value={summary.completed}
+              icon="mc:home-heart"
+              tone="safe"
+            />
+            <StatTile
+              label={t('driver.statMonth')}
+              value={summary.month}
+              icon="calendar-outline"
+              tone="brand"
+            />
+          </Animated.View>
+          <ChipRow style={styles.chips}>
+            <Chip
+              label={t('common.all')}
+              count={items.length}
+              selected={filter === 'all'}
+              onPress={() => setFilter('all')}
+            />
+            <Chip
+              label={t('driver.filterDelivered')}
+              count={summary.completed}
+              tone="safe"
+              selected={filter === 'completed'}
+              onPress={() => setFilter('completed')}
+            />
+            {summary.declined > 0 ? (
+              <Chip
+                label={t('driver.filterDeclined')}
+                count={summary.declined}
+                tone="critical"
+                selected={filter === 'declined'}
+                onPress={() => setFilter('declined')}
+              />
+            ) : null}
+            {summary.cancelled > 0 ? (
+              <Chip
+                label={t('driver.filterCancelled')}
+                count={summary.cancelled}
+                tone="neutral"
+                selected={filter === 'cancelled'}
+                onPress={() => setFilter('cancelled')}
+              />
+            ) : null}
+          </ChipRow>
+        </>
+      ) : null}
+    </View>
+  );
+
+  let empty: React.ReactElement;
+  if (loading) empty = <SkeletonList count={4} />;
+  else if (error) empty = <ErrorState error={error} onRetry={() => void load()} />;
+  else if (items.length === 0)
+    empty = (
+      <EmptyState
+        illustration="deliverFood"
+        title={t('driver.historyEmptyTitle')}
+        message={t('driver.historyEmptyBody')}
+      />
     );
-  }
+  else
+    empty = (
+      <EmptyState
+        compact
+        illustration="allClear"
+        title={t('driver.historyFilterEmpty')}
+      />
+    );
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
-      <FlatList
-        data={visible}
-        keyExtractor={(item) => String(item.assignmentId)}
-        renderItem={({ item }) => <HistoryRow assignment={item} />}
+    <Screen>
+      <TopBar title={t('driver.historyTitle')} scrollY={scrollY} />
+      <Animated.FlatList
+        data={loading || error ? [] : visible}
+        keyExtractor={(a) => String(a.assignmentId)}
+        onScroll={onScroll}
+        scrollEventThrottle={16}
+        ListHeaderComponent={header}
+        ListEmptyComponent={empty}
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
-            refreshing={isRefreshing}
-            onRefresh={onRefresh}
-            tintColor={colours.accent}
+            refreshing={refreshing}
+            onRefresh={() => void load(true)}
+            tintColor={theme.colors.brand}
+            colors={[theme.colors.brand]}
           />
         }
-        ListHeaderComponent={
-          <View>
-            <Text style={styles.title}>Delivery History</Text>
-
-            <StatRow>
-              <StatCard value={summary.total} label="Total deliveries" />
-              <StatCard value={summary.thisMonth} label="This month" />
-            </StatRow>
-
-            <FilterChips options={FILTERS} selected={filter} onSelect={setFilter} />
-
-            {!!error && <Text style={styles.error}>{error}</Text>}
-          </View>
-        }
-        ListEmptyComponent={
-          <EmptyState
-            title="Nothing here yet"
-            message={
-              filter === 'all'
-                ? 'Deliveries you finish or decline will be listed here.'
-                : `No ${filter} deliveries.`
-            }
-          />
-        }
+        renderItem={({ item, index }) => (
+          <Animated.View entering={enterListItem(index, reduced)}>
+            <HistoryRow assignment={item} now={now} />
+          </Animated.View>
+        )}
       />
-    </SafeAreaView>
+    </Screen>
   );
 }
 
-const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: colours.background },
-  centre: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colours.background,
-  },
+const useStyles = makeStyles((t) => ({
   content: {
-    paddingHorizontal: layout.screenPadding,
-    paddingTop: layout.screenPadding,
-    paddingBottom: spacing.xl,
+    paddingHorizontal: t.layout.screenPadding,
+    paddingBottom: t.spacing.xxl,
     flexGrow: 1,
   },
-  title: {
-    fontSize: fontSize.title,
-    fontWeight: fontWeight.bold,
-    color: colours.textPrimary,
-    marginBottom: spacing.lg,
-  },
-  error: {
-    fontSize: fontSize.secondary,
-    color: colours.critical,
-    marginBottom: spacing.md,
-  },
-});
+  stats: { flexDirection: 'row', gap: t.spacing.sm + 2, marginBottom: t.spacing.md },
+  chips: { marginBottom: t.spacing.md },
+}));

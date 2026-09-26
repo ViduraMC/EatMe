@@ -1,347 +1,425 @@
 import React, { useCallback, useState } from 'react';
-import {
-  ActivityIndicator,
-  Alert,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { ActivityIndicator, RefreshControl, View } from 'react-native';
+import Animated from 'react-native-reanimated';
 import { useFocusEffect } from '@react-navigation/native';
-
-import { EmptyState } from '../../components';
-import { getErrorMessage } from '../../api/client';
+import {
+  AppText,
+  BottomSheet,
+  Button,
+  Card,
+  Chip,
+  ChipRow,
+  EmptyState,
+  ErrorState,
+  Icon,
+  Illustration,
+  LargeTitle,
+  Screen,
+  SkeletonList,
+  StatTile,
+  TextField,
+  Toggle,
+  TopBar,
+  useScrollY,
+  useToast,
+} from '../../components';
 import {
   acceptAssignmentRequest,
   confirmDropoffRequest,
   confirmPickupRequest,
   declineAssignmentRequest,
   fetchAssignments,
+  fetchDriverStats,
   setAvailabilityRequest,
 } from '../../api/driver.api';
 import { useAuth } from '../../context/AuthContext';
-import { colours, fontSize, fontWeight, layout, spacing } from '../../constants/theme';
+import { useI18n, type TKey } from '../../i18n';
+import { describeError } from '../../i18n/errors';
+import { useFormat } from '../../i18n/format';
+import { makeStyles, useTheme } from '../../theme';
+import { enterSection, useReducedMotion } from '../../theme/animations';
+import type { DriverAssignment, DriverStats } from '../../types/driver';
+import type { DriverTabProps } from '../../navigation/types';
 import { ActiveDeliveryCard } from './components/ActiveDeliveryCard';
-import { AvailabilityToggle } from './components/AvailabilityToggle';
-import { DeclineReasonModal } from './components/DeclineReasonModal';
-import { NewAssignmentCard } from './components/NewAssignmentCard';
-import { StatCard, StatRow } from './components/StatCard';
-import type { DriverAssignment, DriverStats } from '../../types';
+import { NewDeliveryCard } from './components/NewDeliveryCard';
+
+const REASONS: TKey[] = [
+  'driver.reasonVehicle',
+  'driver.reasonFar',
+  'driver.reasonBusy',
+  'driver.reasonEmergency',
+];
 
 /**
- * Driver dashboard. Figma frame "04 Driver Dashboard", US-DR01 and US-DR02.
+ * The driver's home: am I available, is there a new delivery for me, and
+ * what am I doing right now.
  *
- * Sprint 1 shows real data from GET /driver/stats and GET /driver/assignments
- * and writes availability through PATCH /driver/availability. Sprint 2 wires
- * Accept and Decline to PUT /driver/assignments/:id/accept|decline. Sprint 3
- * (US-DR03) wires the pickup/drop-off confirmation button to
- * PUT /driver/assignments/:id/confirm-pickup|confirm-dropoff.
+ * Availability comes first because it decides everything below it. The
+ * coordinator only sends deliveries to available drivers, so a driver who
+ * wonders "why isn't anything coming?" sees the answer at the top.
  */
-export function DriverDashboardScreen() {
+export function DriverDashboardScreen(_props: DriverTabProps<'DriverDashboard'>) {
+  const theme = useTheme();
+  const styles = useStyles();
+  const { t } = useI18n();
+  const f = useFormat();
+  const toast = useToast();
   const { user, updateUser } = useAuth();
+  const reduced = useReducedMotion();
+  const { scrollY, onScroll } = useScrollY();
 
-  const [stats, setStats] = useState<DriverStats | null>(null);
   const [assignments, setAssignments] = useState<DriverAssignment[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const [isSavingAvailability, setIsSavingAvailability] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [isAccepting, setIsAccepting] = useState(false);
-  const [isDeclineModalVisible, setIsDeclineModalVisible] = useState(false);
-  const [isDeclining, setIsDeclining] = useState(false);
-  const [declineError, setDeclineError] = useState<string | null>(null);
-  const [isConfirming, setIsConfirming] = useState(false);
+  const [stats, setStats] = useState<DriverStats | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<unknown>(null);
+  const [savingAvailability, setSavingAvailability] = useState(false);
+  const [accepting, setAccepting] = useState(false);
+  const [declineOpen, setDeclineOpen] = useState(false);
+  const [reason, setReason] = useState('');
+  const [reasonError, setReasonError] = useState<string | undefined>();
+  const [declining, setDeclining] = useState(false);
+  const [delivered, setDelivered] = useState<DriverAssignment | null>(null);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (isRefresh = false) => {
+    if (isRefresh) setRefreshing(true);
     try {
+      const [list, s] = await Promise.all([fetchAssignments(), fetchDriverStats()]);
+      setAssignments(list);
+      setStats(s);
       setError(null);
-      const nextAssignments = await fetchAssignments();
-      setAssignments(nextAssignments);
-    } catch (caught) {
-      setError(getErrorMessage(caught));
+    } catch (err) {
+      setError(err);
     } finally {
-      setIsLoading(false);
-      setIsRefreshing(false);
+      setLoading(false);
+      setRefreshing(false);
     }
   }, []);
 
-  // Refetch on focus rather than on mount only, so coming back from the
-  // History tab does not show a stale assignment list.
   useFocusEffect(
     useCallback(() => {
       void load();
     }, [load]),
   );
 
-  const onRefresh = useCallback(() => {
-    setIsRefreshing(true);
-    void load();
-  }, [load]);
-
-  /**
-   * The switch writes to the server first and only then to the session user.
-   * Nothing is stored on the device: isAvailable comes back from /auth/me on
-   * the next launch, so the toggle survives a restart without a second source
-   * of truth that could disagree with the database.
-   */
-  const onToggleAvailability = useCallback(
-    async (next: boolean) => {
-      setIsSavingAvailability(true);
-      try {
-        const payload = await setAvailabilityRequest(next);
-        updateUser({ isAvailable: payload.isAvailable });
-      } catch (caught) {
-        Alert.alert('Could not change availability', getErrorMessage(caught));
-      } finally {
-        setIsSavingAvailability(false);
-      }
-    },
-    [updateUser],
-  );
-
-  const newAssignment = assignments.find((item) => item.status === 'pending_driver');
-  const activeDelivery = assignments.find(
-    (item) => item.status === 'accepted' || item.status === 'in_transit',
-  );
-
-  /** Swaps one assignment in place so the list re-renders without a refetch. */
-  const replaceAssignment = useCallback((updated: DriverAssignment) => {
-    setAssignments((current) =>
-      current.map((item) =>
-        item.assignmentId === updated.assignmentId ? updated : item,
-      ),
+  const replace = (updated: DriverAssignment) =>
+    setAssignments((list) =>
+      list.map((a) => (a.assignmentId === updated.assignmentId ? updated : a)),
     );
-  }, []);
 
-  const onAccept = useCallback(async () => {
-    if (!newAssignment) {
-      return;
-    }
-    setIsAccepting(true);
-    try {
-      const updated = await acceptAssignmentRequest(newAssignment.assignmentId);
-      replaceAssignment(updated);
-    } catch (caught) {
-      Alert.alert('Could not accept assignment', getErrorMessage(caught));
-    } finally {
-      setIsAccepting(false);
-    }
-  }, [newAssignment, replaceAssignment]);
-
-  const onDeclinePress = useCallback(() => {
-    setDeclineError(null);
-    setIsDeclineModalVisible(true);
-  }, []);
-
-  const onDeclineCancel = useCallback(() => {
-    setIsDeclineModalVisible(false);
-    setDeclineError(null);
-  }, []);
-
-  const onDeclineSubmit = useCallback(
-    async (declineReason: string) => {
-      if (!newAssignment) {
-        return;
-      }
-      setIsDeclining(true);
-      setDeclineError(null);
-      try {
-        const updated = await declineAssignmentRequest(
-          newAssignment.assignmentId,
-          declineReason,
-        );
-        replaceAssignment(updated);
-        setIsDeclineModalVisible(false);
-      } catch (caught) {
-        setDeclineError(getErrorMessage(caught));
-      } finally {
-        setIsDeclining(false);
-      }
-    },
-    [newAssignment, replaceAssignment],
+  const newAssignment = assignments.find((a) => a.status === 'pending_driver');
+  const active = assignments.find(
+    (a) => a.status === 'accepted' || a.status === 'in_transit',
   );
+  const available = !!user?.isAvailable;
 
-  /**
-   * US-DR03: Confirm Pickup and Confirm Drop Off, driver side.
-   *
-   * Which endpoint to call is decided from the assignment's own status
-   * rather than anything local: in_transit means both driver and donor have
-   * already confirmed pickup, so this action is drop off; anything else
-   * still active is pickup. Whether that action button was even reachable
-   * (e.g. still waiting on the donor) is enforced by ActiveDeliveryCard, and
-   * the server enforces it again regardless.
-   */
-  const onConfirmDelivery = useCallback(async () => {
-    if (!activeDelivery) {
-      return;
-    }
-    const isDropoff = activeDelivery.status === 'in_transit';
-    setIsConfirming(true);
+  /** Server first, then the session user, so the switch never shows a state the database does not have. */
+  async function toggleAvailability(next: boolean) {
+    setSavingAvailability(true);
     try {
-      const updated = isDropoff
-        ? await confirmDropoffRequest(activeDelivery.assignmentId)
-        : await confirmPickupRequest(activeDelivery.assignmentId);
-      replaceAssignment(updated);
-
-      if (isDropoff) {
-        Alert.alert('Drop off confirmed', 'This delivery is now complete.');
-      } else {
-        Alert.alert(
-          'Pickup confirmed',
-          updated.status === 'in_transit'
-            ? 'Both you and the donor have confirmed. This delivery is now in transit.'
-            : 'Your confirmation is recorded. This delivery moves to in transit once the donor confirms as well.',
-        );
-      }
-    } catch (caught) {
-      Alert.alert('Could not confirm', getErrorMessage(caught));
+      const payload = await setAvailabilityRequest(next);
+      updateUser({ isAvailable: payload.isAvailable });
+    } catch (err) {
+      toast.show({ type: 'error', title: describeError(err, t).message });
     } finally {
-      setIsConfirming(false);
+      setSavingAvailability(false);
     }
-  }, [activeDelivery, replaceAssignment]);
-
-  if (isLoading) {
-    return (
-      <SafeAreaView style={styles.centre} edges={['top', 'left', 'right']}>
-        <ActivityIndicator size="large" color={colours.accent} />
-      </SafeAreaView>
-    );
   }
 
+  async function accept() {
+    if (!newAssignment) return;
+    setAccepting(true);
+    try {
+      replace(await acceptAssignmentRequest(newAssignment.assignmentId));
+      toast.show({
+        type: 'success',
+        title: t('driver.acceptedToast'),
+        message: t('driver.acceptedBody'),
+      });
+    } catch (err) {
+      toast.show({ type: 'error', title: describeError(err, t).message });
+    } finally {
+      setAccepting(false);
+    }
+  }
+
+  async function decline() {
+    if (!newAssignment) return;
+    if (!reason.trim()) {
+      setReasonError(t('driver.reasonRequired'));
+      return;
+    }
+    setDeclining(true);
+    try {
+      replace(await declineAssignmentRequest(newAssignment.assignmentId, reason.trim()));
+      setDeclineOpen(false);
+      toast.show({ type: 'success', title: t('driver.declinedToast') });
+    } catch (err) {
+      setReasonError(describeError(err, t).message);
+    } finally {
+      setDeclining(false);
+    }
+  }
+
+  async function confirmPickup() {
+    if (!active) return;
+    try {
+      const updated = await confirmPickupRequest(active.assignmentId);
+      toast.show({
+        type: 'success',
+        title: t('driver.pickupToast'),
+        message:
+          updated.status === 'in_transit'
+            ? t('driver.pickupBoth')
+            : t('driver.pickupYou'),
+      });
+      setTimeout(() => replace(updated), 900);
+    } catch (err) {
+      toast.show({ type: 'error', title: describeError(err, t).message });
+      throw err;
+    }
+  }
+
+  async function confirmDropoff() {
+    if (!active) return;
+    try {
+      const updated = await confirmDropoffRequest(active.assignmentId);
+      setTimeout(() => {
+        replace(updated);
+        setDelivered(updated);
+        void fetchDriverStats()
+          .then(setStats)
+          .catch(() => undefined);
+      }, 700);
+    } catch (err) {
+      toast.show({ type: 'error', title: describeError(err, t).message });
+      throw err;
+    }
+  }
+
+  const deliveredWhat = delivered
+    ? delivered.request.items
+        .map((i) => f.quantity(i.quantityRequested, i.item.unit))
+        .join(', ')
+    : '';
+
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
-      <ScrollView
+    <Screen>
+      <TopBar title={t('driver.dashboardTitle')} scrollY={scrollY} />
+      <Animated.ScrollView
+        onScroll={onScroll}
+        scrollEventThrottle={16}
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
-            refreshing={isRefreshing}
-            onRefresh={onRefresh}
-            tintColor={colours.accent}
+            refreshing={refreshing}
+            onRefresh={() => void load(true)}
+            tintColor={theme.colors.brand}
+            colors={[theme.colors.brand]}
           />
         }
       >
-        <View style={styles.header}>
-          <View style={styles.identity}>
-            <Text style={styles.name} numberOfLines={1}>
-              {user?.name ?? 'Driver'}
-            </Text>
-            <Text style={styles.role}>
-              {user?.organisationName ? `${user.organisationName} - Driver` : 'Driver'}
-            </Text>
+        <LargeTitle
+          eyebrow={t('donor.greetingName', {
+            greeting: f.greeting(),
+            name: user?.name.split(' ')[0] ?? '',
+          })}
+          title={t('driver.dashboardTitle')}
+          scrollY={scrollY}
+        />
+
+        <Animated.View entering={enterSection(0, reduced)}>
+          <Card
+            variant="flat"
+            style={[styles.availability, available && styles.availabilityOn]}
+          >
+            <View
+              style={[
+                styles.availIcon,
+                {
+                  backgroundColor: available
+                    ? theme.colors.olive
+                    : theme.colors.surfaceMuted,
+                },
+              ]}
+            >
+              <Icon
+                name={available ? 'mc:truck-fast' : 'mc:sleep'}
+                size={24}
+                color={available ? theme.colors.onOlive : 'textSecondary'}
+              />
+            </View>
+            <View style={styles.flex}>
+              <AppText variant="bodyStrong">
+                {available ? t('driver.availableTitle') : t('driver.offTitle')}
+              </AppText>
+              <AppText variant="caption" color="textSecondary">
+                {available ? t('driver.availableBody') : t('driver.offBody')}
+              </AppText>
+            </View>
+            {savingAvailability ? (
+              <ActivityIndicator color={theme.colors.olive} />
+            ) : (
+              <Toggle
+                value={available}
+                onChange={(v) => void toggleAvailability(v)}
+                tone="olive"
+                accessibilityLabel={t('driver.availability')}
+              />
+            )}
+          </Card>
+        </Animated.View>
+
+        {stats ? (
+          <Animated.View entering={enterSection(1, reduced)} style={styles.stats}>
+            <StatTile
+              label={t('driver.statToday')}
+              value={stats.deliveriesToday}
+              icon="today-outline"
+              tone="brand"
+            />
+            <StatTile
+              label={t('driver.statWeek')}
+              value={stats.completedThisWeek}
+              icon="mc:home-heart"
+              tone="safe"
+            />
+          </Animated.View>
+        ) : null}
+
+        {loading ? (
+          <SkeletonList count={2} />
+        ) : error ? (
+          <ErrorState error={error} onRetry={() => void load()} compact />
+        ) : (
+          <>
+            {newAssignment ? (
+              <Animated.View entering={enterSection(2, reduced)}>
+                <NewDeliveryCard
+                  assignment={newAssignment}
+                  accepting={accepting}
+                  onAccept={() => void accept()}
+                  onDecline={() => {
+                    setReason('');
+                    setReasonError(undefined);
+                    setDeclineOpen(true);
+                  }}
+                />
+              </Animated.View>
+            ) : null}
+            {active ? (
+              <Animated.View entering={enterSection(3, reduced)}>
+                <ActiveDeliveryCard
+                  key={`${active.assignmentId}-${active.status}`}
+                  assignment={active}
+                  onConfirmPickup={confirmPickup}
+                  onConfirmDropoff={confirmDropoff}
+                />
+              </Animated.View>
+            ) : null}
+            {!newAssignment && !active ? (
+              <EmptyState
+                compact
+                illustration="deliverFood"
+                title={t('driver.emptyTitle')}
+                message={available ? t('driver.emptyOnBody') : t('driver.emptyOffBody')}
+              />
+            ) : null}
+          </>
+        )}
+      </Animated.ScrollView>
+
+      <BottomSheet
+        visible={declineOpen}
+        onClose={() => setDeclineOpen(false)}
+        dismissible={!declining}
+        title={t('driver.declineTitle')}
+        subtitle={t('driver.declineBody')}
+        footer={
+          <View style={styles.sheetActions}>
+            <Button
+              label={t('common.cancel')}
+              variant="secondary"
+              onPress={() => setDeclineOpen(false)}
+              style={styles.flex}
+            />
+            <Button
+              label={t('driver.declineConfirm')}
+              variant="danger"
+              onPress={() => void decline()}
+              loading={declining}
+              style={styles.flex}
+            />
           </View>
-          <AvailabilityToggle
-            isAvailable={user?.isAvailable ?? false}
-            onChange={onToggleAvailability}
-            isSaving={isSavingAvailability}
+        }
+      >
+        <ChipRow style={styles.reasons}>
+          {REASONS.map((key) => (
+            <Chip
+              key={key}
+              label={t(key)}
+              tone="critical"
+              selected={reason === t(key)}
+              onPress={() => {
+                setReason(t(key));
+                setReasonError(undefined);
+              }}
+            />
+          ))}
+        </ChipRow>
+        <TextField
+          label={t('driver.reasonLabel')}
+          value={reason}
+          onChangeText={(v) => {
+            setReason(v);
+            setReasonError(undefined);
+          }}
+          error={reasonError}
+          placeholder={t('driver.reasonPlaceholder')}
+          multiline
+          maxLength={500}
+        />
+      </BottomSheet>
+
+      <BottomSheet visible={!!delivered} onClose={() => setDelivered(null)}>
+        <View style={styles.success}>
+          <Illustration name="success" width={200} />
+          <AppText variant="title" align="center" accessibilityRole="header">
+            {t('driver.deliveredTitle')}
+          </AppText>
+          <AppText variant="body" color="textSecondary" align="center">
+            {t('driver.deliveredBody', {
+              what: deliveredWhat,
+              org: delivered?.request.recipient.name ?? '',
+            })}
+          </AppText>
+          <Button
+            label={t('driver.done')}
+            onPress={() => setDelivered(null)}
+            style={styles.successBtn}
           />
         </View>
-
-        <StatRow>
-          <StatCard value={stats?.deliveriesToday ?? 0} label="Deliveries today" />
-          <StatCard value={stats?.completedThisWeek ?? 0} label="Completed this week" />
-        </StatRow>
-
-        {!!error && <Text style={styles.error}>{error}</Text>}
-
-        <Text style={styles.sectionHeading}>New assignment</Text>
-        {newAssignment ? (
-          <NewAssignmentCard
-            assignment={newAssignment}
-            onAccept={onAccept}
-            onDecline={onDeclinePress}
-            isAccepting={isAccepting}
-            isDeclining={isDeclining}
-          />
-        ) : (
-          <View style={styles.placeholder}>
-            <Text style={styles.placeholderText}>
-              {user?.isAvailable
-                ? 'Nothing waiting on you right now.'
-                : 'You are marked unavailable, so no new assignments will come through.'}
-            </Text>
-          </View>
-        )}
-
-        <Text style={styles.sectionHeading}>Active delivery</Text>
-        {activeDelivery ? (
-          <ActiveDeliveryCard
-            assignment={activeDelivery}
-            onConfirm={() => void onConfirmDelivery()}
-            isConfirming={isConfirming}
-          />
-        ) : (
-          <EmptyState
-            title="No active delivery"
-            message="An assignment you accept will show its progress here."
-          />
-        )}
-      </ScrollView>
-
-      <DeclineReasonModal
-        visible={isDeclineModalVisible}
-        isSubmitting={isDeclining}
-        errorMessage={declineError}
-        onCancel={onDeclineCancel}
-        onSubmit={onDeclineSubmit}
-      />
-    </SafeAreaView>
+      </BottomSheet>
+    </Screen>
   );
 }
 
-const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: colours.background },
-  centre: {
-    flex: 1,
+const useStyles = makeStyles((t) => ({
+  content: { paddingHorizontal: t.layout.screenPadding, paddingBottom: t.spacing.xxl },
+  flex: { flex: 1 },
+  availability: { flexDirection: 'row', alignItems: 'center', gap: t.spacing.sm + 4 },
+  availabilityOn: { backgroundColor: t.colors.oliveSoft, borderColor: t.colors.olive },
+  availIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: colours.background,
   },
-  content: {
-    paddingHorizontal: layout.screenPadding,
-    paddingTop: layout.screenPadding,
-    paddingBottom: spacing.xl,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    gap: spacing.md,
-    marginBottom: spacing.lg,
-  },
-  identity: { flex: 1 },
-  name: {
-    fontSize: fontSize.title,
-    fontWeight: fontWeight.bold,
-    color: colours.textPrimary,
-  },
-  role: {
-    fontSize: fontSize.secondary,
-    color: colours.textSecondary,
-    marginTop: 2,
-  },
-  sectionHeading: {
-    fontSize: fontSize.heading,
-    fontWeight: fontWeight.bold,
-    color: colours.textPrimary,
-    marginBottom: spacing.md,
-  },
-  placeholder: {
-    backgroundColor: colours.surface,
-    borderRadius: layout.radius,
-    padding: spacing.md,
-    marginBottom: spacing.lg,
-  },
-  placeholderText: {
-    fontSize: fontSize.secondary,
-    color: colours.textSecondary,
-    lineHeight: 20,
-  },
-  error: {
-    fontSize: fontSize.secondary,
-    color: colours.critical,
-    marginBottom: spacing.md,
-  },
-});
+  stats: { flexDirection: 'row', gap: t.spacing.sm + 2, marginBottom: t.spacing.md },
+  reasons: { marginBottom: t.spacing.md },
+  sheetActions: { flexDirection: 'row', gap: t.spacing.sm + 4 },
+  success: { alignItems: 'center', gap: t.spacing.sm, paddingBottom: t.spacing.sm },
+  successBtn: { alignSelf: 'stretch', marginTop: t.spacing.md },
+}));

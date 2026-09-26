@@ -1,44 +1,68 @@
 import React from 'react';
-import {
-  Pressable,
-  StyleSheet,
-  View,
-  type StyleProp,
-  type ViewStyle,
-} from 'react-native';
-import { colours, layout, spacing } from '../constants/theme';
+import { View, type StyleProp, type ViewStyle } from 'react-native';
+import { PressableScale } from './PressableScale';
+import { makeStyles } from '../theme';
 
 interface CardProps {
   children: React.ReactNode;
   onPress?: () => void;
+  /** flat: border only. raised: soft warm shadow. tinted: brand wash, for highlights. */
+  variant?: 'flat' | 'raised' | 'tinted';
+  /** Remove the inner padding, for cards with full-bleed headers. */
+  noPadding?: boolean;
+  accessibilityLabel?: string;
+  accessibilityHint?: string;
   style?: StyleProp<ViewStyle>;
 }
 
-/** A bordered surface. Pass onPress to make the whole card tappable. */
-export function Card({ children, onPress, style }: CardProps) {
+/**
+ * The basic surface. Pass onPress to make the whole card a single tap target,
+ * which is easier to hit than a small "View" link inside it.
+ */
+export function Card({
+  children,
+  onPress,
+  variant = 'raised',
+  noPadding,
+  accessibilityLabel,
+  accessibilityHint,
+  style,
+}: CardProps) {
+  const styles = useStyles();
+  const composed = [styles.card, styles[variant], noPadding && styles.noPadding, style];
+
   if (onPress) {
     return (
-      <Pressable
+      <PressableScale
         onPress={onPress}
+        scaleTo={0.985}
         accessibilityRole="button"
-        style={({ pressed }) => [styles.card, pressed && styles.pressed, style]}
+        accessibilityLabel={accessibilityLabel}
+        accessibilityHint={accessibilityHint}
+        style={composed}
       >
         {children}
-      </Pressable>
+      </PressableScale>
     );
   }
-
-  return <View style={[styles.card, style]}>{children}</View>;
+  return <View style={composed}>{children}</View>;
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((t) => ({
   card: {
-    backgroundColor: colours.background,
-    borderWidth: layout.borderWidth,
-    borderColor: colours.border,
-    borderRadius: layout.radius,
-    padding: spacing.md,
-    marginBottom: spacing.sm,
+    backgroundColor: t.colors.surface,
+    borderRadius: t.radius.lg,
+    padding: t.spacing.md,
+    marginBottom: t.spacing.md,
   },
-  pressed: { backgroundColor: colours.surface },
-});
+  flat: { borderWidth: 1, borderColor: t.colors.border },
+  raised: {
+    ...t.elevation(1),
+    // Dark mode shadows vanish against dark backgrounds, so a hairline edge
+    // does the separating instead.
+    borderWidth: t.isDark ? 1 : 0,
+    borderColor: t.colors.border,
+  },
+  tinted: { backgroundColor: t.colors.brandSoft },
+  noPadding: { padding: 0, overflow: 'hidden' },
+}));

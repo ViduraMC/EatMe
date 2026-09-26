@@ -1,81 +1,69 @@
-import React, { useCallback, useState } from 'react';
-import {
-  ActivityIndicator,
-  FlatList,
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import React, { useCallback, useMemo, useState } from 'react';
+import { RefreshControl, View } from 'react-native';
+import Animated from 'react-native-reanimated';
 import { useFocusEffect } from '@react-navigation/native';
-import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-
-import { Card, EmptyState, ScreenContainer, StatusPill } from '../../components';
+import {
+  AppText,
+  Avatar,
+  Badge,
+  Card,
+  Chip,
+  ChipRow,
+  EmptyState,
+  ErrorState,
+  Icon,
+  InfoBanner,
+  LargeTitle,
+  Screen,
+  SkeletonList,
+  TopBar,
+  useScrollY,
+} from '../../components';
 import { fetchIncomingRequests } from '../../api/donations.api';
-import { getErrorMessage } from '../../api/client';
-import { colours, fontSize, fontWeight, layout, spacing } from '../../constants/theme';
-import { formatDateTime, formatStatus } from '../../utils/datetime';
+import { useNow } from '../../hooks/useNow';
+import { useI18n } from '../../i18n';
+import { useFormat } from '../../i18n/format';
+import { makeStyles, useTheme } from '../../theme';
+import { requestTone } from '../../utils/status';
+import { enterListItem, enterSection, useReducedMotion } from '../../theme/animations';
 import type { IncomingRequest, RequestStatus } from '../../types/assignment';
-import type { DonorStackParamList } from '../../navigation/types';
-
-type Props = NativeStackScreenProps<DonorStackParamList, 'IncomingRequests'>;
+import type { DonorTabProps } from '../../navigation/types';
 
 type Filter = 'all' | RequestStatus;
 
-const FILTERS: Array<{ value: Filter; label: string }> = [
-  { value: 'all', label: 'All' },
-  { value: 'pending', label: 'Pending' },
-  { value: 'accepted', label: 'Accepted' },
-  { value: 'rejected', label: 'Rejected' },
-];
-
-/** Neutral for everything except accepted, which is the good outcome. */
-function toneFor(status: RequestStatus): 'safe' | 'neutral' {
-  return status === 'accepted' ? 'safe' : 'neutral';
-}
-
-/** "3 hours ago", so a donor can see how long someone has been waiting. */
-function timeAgo(iso: string): string {
-  const diffMs = Date.now() - new Date(iso).getTime();
-  if (diffMs < 0) return 'just now';
-
-  const minutes = Math.round(diffMs / 60000);
-  if (minutes < 1) return 'just now';
-  if (minutes < 60) return `${minutes} min ago`;
-
-  const hours = Math.round(minutes / 60);
-  if (hours < 48) return `${hours} hour${hours === 1 ? '' : 's'} ago`;
-
-  const days = Math.round(hours / 24);
-  return `${days} day${days === 1 ? '' : 's'} ago`;
-}
+const FILTERS: Filter[] = ['all', 'pending', 'accepted', 'rejected', 'cancelled'];
 
 /**
- * Incoming Requests, READ ONLY. Figma frame "08 Incoming Requests", minus the
- * Accept and Reject buttons.
+ * Who has asked for this donor's food. Read only.
  *
- * Sprint 2 design decision: approving a request moved to the Donation
- * Coordinator, who already owns matching and assignment. The donor persona is
- * someone with two minutes between classes, so once the food is posted their
- * active work is finished apart from confirming handover.
- *
- * There are deliberately no action buttons on this screen, and no accept or
- * reject function in donations.api.ts to call. Do not add them here.
+ * Sprint 2 moved approval to the Donation Coordinator. A screen with no
+ * buttons reads as broken unless it says why, so the first thing on it is a
+ * plain explanation that there is nothing the donor needs to do here.
  */
-export function IncomingRequestsScreen({ navigation }: Props) {
+export function IncomingRequestsScreen(_props: DonorTabProps<'IncomingRequests'>) {
+  const theme = useTheme();
+  const styles = useStyles();
+  const { t } = useI18n();
+  const f = useFormat();
+  const now = useNow(60_000);
+  const reduced = useReducedMotion();
+  const { scrollY, onScroll } = useScrollY();
+
   const [requests, setRequests] = useState<IncomingRequest[]>([]);
   const [filter, setFilter] = useState<Filter>('all');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<unknown>(null);
 
-  const load = useCallback(async (current: Filter, isRefresh = false) => {
+  // All statuses are fetched once and filtered here, so every chip can show
+  // its count and switching filters is instant.
+  const load = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
-    setError(null);
     try {
-      setRequests(await fetchIncomingRequests(current === 'all' ? undefined : current));
+      setRequests(await fetchIncomingRequests());
+      setError(null);
     } catch (err) {
-      setError(getErrorMessage(err));
+      setError(err);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -84,191 +72,196 @@ export function IncomingRequestsScreen({ navigation }: Props) {
 
   useFocusEffect(
     useCallback(() => {
-      void load(filter);
-    }, [load, filter]),
+      void load();
+    }, [load]),
   );
 
-  function changeFilter(next: Filter) {
-    setFilter(next);
-    setLoading(true);
-    void load(next);
-  }
+  const counts = useMemo(() => {
+    const c: Record<Filter, number> = {
+      all: requests.length,
+      pending: 0,
+      accepted: 0,
+      rejected: 0,
+      cancelled: 0,
+    };
+    requests.forEach((r) => {
+      c[r.status] += 1;
+    });
+    return c;
+  }, [requests]);
+
+  const visible =
+    filter === 'all' ? requests : requests.filter((r) => r.status === filter);
+
+  const header = (
+    <View>
+      <LargeTitle
+        title={t('donor.requestsTitle')}
+        subtitle={t('donor.requestsSubtitle')}
+        scrollY={scrollY}
+      />
+      <Animated.View entering={enterSection(0, reduced)}>
+        <InfoBanner
+          tone="info"
+          icon="people-circle-outline"
+          message={t('donor.coordinatorNote')}
+        />
+      </Animated.View>
+      {!loading && !error && requests.length > 0 ? (
+        <ChipRow style={styles.chips}>
+          {FILTERS.filter((key) => key === 'all' || counts[key] > 0).map((key) => (
+            <Chip
+              key={key}
+              label={key === 'all' ? t('common.all') : f.status('request', key)}
+              count={counts[key]}
+              tone={key === 'all' ? 'brand' : requestTone[key]}
+              selected={filter === key}
+              onPress={() => setFilter(key)}
+            />
+          ))}
+        </ChipRow>
+      ) : null}
+    </View>
+  );
+
+  let empty: React.ReactElement;
+  if (loading) empty = <SkeletonList count={3} />;
+  else if (error) empty = <ErrorState error={error} onRetry={() => void load()} />;
+  else if (requests.length === 0)
+    empty = (
+      <EmptyState
+        illustration="requestFood"
+        title={t('donor.requestsEmptyTitle')}
+        message={t('donor.requestsEmptyBody')}
+      />
+    );
+  else
+    empty = (
+      <EmptyState
+        compact
+        illustration="allClear"
+        title={t('donor.requestsFilterEmpty')}
+      />
+    );
 
   return (
-    <ScreenContainer>
-      <Text style={styles.heading}>Incoming requests</Text>
-
-      {/*
-        The one line that explains why there is nothing to tap. Without it the
-        screen reads as broken rather than deliberately read only.
-      */}
-      <View style={styles.notice}>
-        <Text style={styles.noticeText}>
-          The Donation Coordinator reviews and approves these requests. You do not need to
-          do anything here.
-        </Text>
-      </View>
-
-      <View style={styles.filterRow}>
-        {FILTERS.map((f) => (
-          <Pressable
-            key={f.value}
-            onPress={() => changeFilter(f.value)}
-            accessibilityRole="radio"
-            accessibilityState={{ selected: filter === f.value }}
-            style={[styles.chip, filter === f.value && styles.chipOn]}
-          >
-            <Text style={[styles.chipText, filter === f.value && styles.chipTextOn]}>
-              {f.label}
-            </Text>
-          </Pressable>
-        ))}
-      </View>
-
-      {!!error && <Text style={styles.error}>{error}</Text>}
-
-      {loading ? (
-        <View style={styles.centre}>
-          <ActivityIndicator size="large" color={colours.accent} />
-        </View>
-      ) : (
-        <FlatList
-          data={requests}
-          keyExtractor={(r) => String(r.requestId)}
-          refreshing={refreshing}
-          onRefresh={() => void load(filter, true)}
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={requests.length === 0 ? styles.emptyWrap : undefined}
-          ListEmptyComponent={
-            <EmptyState
-              title={filter === 'all' ? 'No requests yet' : `No ${filter} requests`}
-              message={
-                filter === 'all'
-                  ? 'When a recipient asks for food from one of your listings, it appears here.'
-                  : 'Try a different filter to see your other requests.'
-              }
-              actionLabel={filter === 'all' ? 'Back to my listings' : undefined}
-              onAction={
-                filter === 'all' ? () => navigation.navigate('MyListings') : undefined
-              }
-            />
-          }
-          renderItem={({ item }) => (
-            <Card>
-              <View style={styles.cardTop}>
-                <Text style={styles.org} numberOfLines={1}>
-                  {item.recipient.organisationName ?? item.recipient.name}
-                </Text>
-                <StatusPill
-                  label={formatStatus(item.status)}
-                  tone={toneFor(item.status)}
-                />
-              </View>
-
-              <Text style={styles.meta} numberOfLines={1}>
-                For {item.listing.title}
-              </Text>
-
-              <View style={styles.items}>
-                {item.items.map((requested) => (
-                  <Text key={requested.requestItemId} style={styles.itemLine}>
-                    {'•'} {requested.quantityRequested} {requested.item.unit}{' '}
-                    {requested.item.foodName}
-                  </Text>
-                ))}
-              </View>
-
-              {!!item.message && <Text style={styles.message}>“{item.message}”</Text>}
-
-              {item.status === 'rejected' && !!item.rejectionReason && (
-                <Text style={styles.rejection}>Reason: {item.rejectionReason}</Text>
-              )}
-
-              <Text style={styles.received}>
-                Received {timeAgo(item.createdAt)} · {formatDateTime(item.createdAt)}
-              </Text>
-            </Card>
-          )}
-        />
-      )}
-    </ScreenContainer>
+    <Screen>
+      <TopBar title={t('donor.requestsTitle')} scrollY={scrollY} />
+      <Animated.FlatList
+        data={loading || error ? [] : visible}
+        keyExtractor={(r) => String(r.requestId)}
+        onScroll={onScroll}
+        scrollEventThrottle={16}
+        ListHeaderComponent={header}
+        ListEmptyComponent={empty}
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => void load(true)}
+            tintColor={theme.colors.brand}
+            colors={[theme.colors.brand]}
+          />
+        }
+        renderItem={({ item, index }) => (
+          <Animated.View entering={enterListItem(index, reduced)}>
+            <RequestCard request={item} now={now} />
+          </Animated.View>
+        )}
+      />
+    </Screen>
   );
 }
 
-const styles = StyleSheet.create({
-  centre: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  heading: {
-    fontSize: fontSize.title,
-    fontWeight: fontWeight.bold,
-    color: colours.textPrimary,
-    marginBottom: spacing.sm,
+function RequestCard({ request, now }: { request: IncomingRequest; now: number }) {
+  const styles = useStyles();
+  const { t } = useI18n();
+  const f = useFormat();
+  const who = request.recipient.organisationName ?? request.recipient.name;
+
+  return (
+    <Card>
+      <View style={styles.head}>
+        <Avatar
+          name={who}
+          size={44}
+          icon={request.recipient.organisationName ? 'mc:home-heart' : undefined}
+        />
+        <View style={styles.flex}>
+          <AppText variant="bodyStrong" numberOfLines={1}>
+            {who}
+          </AppText>
+          <AppText variant="caption" color="textSecondary" numberOfLines={1}>
+            {t('donor.forListing', { title: request.listing.title })}
+          </AppText>
+        </View>
+        <Badge
+          label={f.status('request', request.status)}
+          tone={requestTone[request.status]}
+          size="sm"
+        />
+      </View>
+
+      <View style={styles.items}>
+        {request.items.map((line) => (
+          <View key={line.requestItemId} style={styles.line}>
+            <Icon name="ellipse" size={6} color="brand" />
+            <AppText variant="secondary" style={styles.flex} numberOfLines={1}>
+              {line.item.foodName}
+            </AppText>
+            <AppText variant="secondaryStrong">
+              {f.quantity(line.quantityRequested, line.item.unit)}
+            </AppText>
+          </View>
+        ))}
+      </View>
+
+      {request.message ? (
+        <View style={styles.quote}>
+          <Icon name="chatbubble-ellipses-outline" size={16} color="textSecondary" />
+          <AppText
+            variant="secondary"
+            color="textSecondary"
+            style={[styles.flex, styles.italic]}
+          >
+            {request.message}
+          </AppText>
+        </View>
+      ) : null}
+
+      {request.status === 'rejected' && request.rejectionReason ? (
+        <AppText variant="caption" color="criticalText" style={styles.reason}>
+          {t('donor.reason', { reason: request.rejectionReason })}
+        </AppText>
+      ) : null}
+
+      <AppText variant="caption" color="textTertiary" style={styles.when}>
+        {t('donor.received', { when: f.relative(request.createdAt, now) })}
+      </AppText>
+    </Card>
+  );
+}
+
+const useStyles = makeStyles((t) => ({
+  content: {
+    paddingHorizontal: t.layout.screenPadding,
+    paddingBottom: t.spacing.xxl,
+    flexGrow: 1,
   },
-  notice: {
-    backgroundColor: colours.surface,
-    borderRadius: layout.radius,
-    padding: spacing.md,
-    marginBottom: spacing.md,
+  chips: { marginBottom: t.spacing.md },
+  flex: { flex: 1 },
+  head: { flexDirection: 'row', alignItems: 'center', gap: t.spacing.sm + 4 },
+  items: {
+    marginTop: t.spacing.sm + 4,
+    padding: t.spacing.sm + 4,
+    borderRadius: t.radius.md,
+    backgroundColor: t.colors.surfaceMuted,
+    gap: t.spacing.xs + 2,
   },
-  noticeText: {
-    fontSize: fontSize.label,
-    color: colours.textSecondary,
-    lineHeight: 18,
-  },
-  filterRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.xs,
-    marginBottom: spacing.md,
-  },
-  chip: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: layout.radius,
-    borderWidth: layout.borderWidth,
-    borderColor: colours.border,
-    backgroundColor: colours.background,
-  },
-  chipOn: { borderColor: colours.accent, backgroundColor: colours.surface },
-  chipText: { fontSize: fontSize.secondary, color: colours.textSecondary },
-  chipTextOn: { color: colours.accent, fontWeight: fontWeight.semibold },
-  emptyWrap: { flexGrow: 1, justifyContent: 'center' },
-  cardTop: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacing.sm,
-    marginBottom: spacing.xs,
-  },
-  org: {
-    fontSize: fontSize.body,
-    fontWeight: fontWeight.semibold,
-    color: colours.textPrimary,
-    flexShrink: 1,
-  },
-  meta: { fontSize: fontSize.secondary, color: colours.textSecondary, lineHeight: 20 },
-  items: { marginTop: spacing.xs },
-  itemLine: { fontSize: fontSize.secondary, color: colours.textPrimary, lineHeight: 20 },
-  message: {
-    fontSize: fontSize.secondary,
-    color: colours.textSecondary,
-    fontStyle: 'italic',
-    marginTop: spacing.xs,
-    lineHeight: 20,
-  },
-  rejection: {
-    fontSize: fontSize.secondary,
-    color: colours.critical,
-    marginTop: spacing.xs,
-    lineHeight: 20,
-  },
-  received: {
-    fontSize: fontSize.label,
-    color: colours.textSecondary,
-    marginTop: spacing.sm,
-  },
-  error: {
-    color: colours.critical,
-    fontSize: fontSize.secondary,
-    marginBottom: spacing.sm,
-  },
-});
+  line: { flexDirection: 'row', alignItems: 'center', gap: t.spacing.sm },
+  quote: { flexDirection: 'row', gap: t.spacing.sm, marginTop: t.spacing.sm + 4 },
+  italic: { fontStyle: 'italic' },
+  reason: { marginTop: t.spacing.sm },
+  when: { marginTop: t.spacing.sm + 4 },
+}));

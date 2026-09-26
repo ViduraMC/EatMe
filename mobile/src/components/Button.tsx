@@ -1,83 +1,154 @@
 import React from 'react';
-import {
-  ActivityIndicator,
-  Pressable,
-  StyleSheet,
-  Text,
-  type StyleProp,
-  type ViewStyle,
-} from 'react-native';
-import { colours, fontSize, fontWeight, layout, spacing } from '../constants/theme';
+import { ActivityIndicator, View, type StyleProp, type ViewStyle } from 'react-native';
+import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
+import { AppText } from './AppText';
+import { Icon, type IconName } from './Icon';
+import { PressableScale } from './PressableScale';
+import { makeStyles, useTheme } from '../theme';
+import type { HapticKind } from '../utils/haptics';
 
-type Variant = 'primary' | 'secondary' | 'danger';
+export type ButtonVariant =
+  'primary' | 'secondary' | 'tonal' | 'ghost' | 'danger' | 'dangerGhost' | 'success';
 
-interface ButtonProps {
+export type ButtonSize = 'sm' | 'md' | 'lg';
+
+export interface ButtonProps {
   label: string;
   onPress: () => void;
-  variant?: Variant;
+  variant?: ButtonVariant;
+  size?: ButtonSize;
+  /** Icon before the label. */
+  icon?: IconName;
+  /** Icon after the label, e.g. a forward arrow on "Continue". */
+  iconRight?: IconName;
   loading?: boolean;
   disabled?: boolean;
+  /** Shrink to the label instead of filling the row. */
+  inline?: boolean;
+  haptic?: HapticKind | false;
+  accessibilityHint?: string;
   style?: StyleProp<ViewStyle>;
+  testID?: string;
 }
 
+/**
+ * Buttons have one job each, shown by variant:
+ *
+ * - primary:   the one main action on a screen (Post listing, Request food)
+ * - secondary: an alternative (Cancel, Back to listings)
+ * - tonal:     a supporting action that should still stand out (Add another item)
+ * - ghost:     low emphasis, inline (See all, Skip)
+ * - danger:      destructive, confirming it (the red button in a confirm sheet)
+ * - dangerGhost: destructive but quiet, where it should be findable, not prominent
+ * - success:   confirming a handover
+ *
+ * A screen should have at most one primary button, so the next step is never
+ * ambiguous.
+ */
 export function Button({
   label,
   onPress,
   variant = 'primary',
+  size = 'md',
+  icon,
+  iconRight,
   loading = false,
   disabled = false,
+  inline = false,
+  haptic,
+  accessibilityHint,
   style,
+  testID,
 }: ButtonProps) {
+  const theme = useTheme();
+  const styles = useStyles();
   const isDisabled = disabled || loading;
 
+  const fg = {
+    primary: theme.colors.onBrand,
+    secondary: theme.colors.text,
+    tonal: theme.colors.brandText,
+    ghost: theme.colors.brandText,
+    danger: '#FFFFFF',
+    dangerGhost: theme.colors.criticalText,
+    success: theme.colors.onOlive,
+  }[variant];
+
+  const iconSize = size === 'sm' ? 18 : 20;
+
   return (
-    <Pressable
+    <PressableScale
+      testID={testID}
       onPress={onPress}
       disabled={isDisabled}
+      haptic={
+        haptic ?? (variant === 'primary' || variant === 'success' ? 'light' : false)
+      }
       accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityHint={accessibilityHint}
       accessibilityState={{ disabled: isDisabled, busy: loading }}
-      style={({ pressed }) => [
+      style={[
         styles.base,
+        styles[size],
         styles[variant],
-        pressed && !isDisabled && styles.pressed,
+        inline && styles.inline,
         isDisabled && styles.disabled,
         style,
       ]}
     >
       {loading ? (
-        <ActivityIndicator
-          color={variant === 'secondary' ? colours.textPrimary : colours.textInverse}
-        />
+        <Animated.View entering={FadeIn.duration(150)} exiting={FadeOut.duration(100)}>
+          <ActivityIndicator color={fg} />
+        </Animated.View>
       ) : (
-        <Text style={[styles.label, variant === 'secondary' && styles.labelSecondary]}>
-          {label}
-        </Text>
+        <View style={styles.row}>
+          {icon ? <Icon name={icon} size={iconSize} color={fg} /> : null}
+          <AppText
+            variant="button"
+            color={fg}
+            numberOfLines={1}
+            style={size === 'sm' ? styles.labelSm : undefined}
+          >
+            {label}
+          </AppText>
+          {iconRight ? <Icon name={iconRight} size={iconSize} color={fg} /> : null}
+        </View>
       )}
-    </Pressable>
+    </PressableScale>
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((t) => ({
   base: {
-    height: layout.controlHeight,
-    borderRadius: layout.radius,
+    borderRadius: t.radius.pill,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: t.spacing.lg,
   },
-  primary: { backgroundColor: colours.accent },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: t.spacing.sm,
+  },
+  sm: { height: 40, paddingHorizontal: t.spacing.md },
+  md: { height: t.layout.controlHeight },
+  lg: { height: 58 },
+  inline: { alignSelf: 'flex-start' },
+  primary: { backgroundColor: t.colors.brand, ...t.elevation(1) },
   secondary: {
-    backgroundColor: colours.background,
-    borderWidth: layout.borderWidth,
-    borderColor: colours.border,
+    backgroundColor: t.colors.surface,
+    borderWidth: t.layout.borderWidth,
+    borderColor: t.colors.borderStrong,
   },
-  danger: { backgroundColor: colours.critical },
-  pressed: { opacity: 0.85 },
-  disabled: { opacity: 0.5 },
-  label: {
-    color: colours.textInverse,
-    fontSize: fontSize.body,
-    fontWeight: fontWeight.semibold,
-  },
-  labelSecondary: { color: colours.textPrimary },
-});
+  tonal: { backgroundColor: t.colors.brandSoft },
+  ghost: { backgroundColor: 'transparent', paddingHorizontal: t.spacing.sm },
+  // In dark mode `critical` is a light red (so warnings read on charcoal);
+  // a filled button uses a deeper red instead, so it keeps a white label
+  // like every other filled button.
+  danger: { backgroundColor: t.isDark ? '#C84232' : t.colors.critical },
+  dangerGhost: { backgroundColor: 'transparent', paddingHorizontal: t.spacing.sm },
+  success: { backgroundColor: t.colors.olive, ...t.elevation(1) },
+  disabled: { opacity: 0.45 },
+  labelSm: { fontSize: 14 },
+}));

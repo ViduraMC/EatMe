@@ -37,6 +37,16 @@ export async function fetchAssignment(id: number): Promise<DriverAssignment> {
   return data.data.assignment;
 }
 
+/**
+ * Today's assignments and this week's completed deliveries, for the
+ * dashboard tiles. The endpoint existed but was never called, so the tiles
+ * always showed zero.
+ */
+export async function fetchDriverStats(): Promise<DriverStats> {
+  const { data } = await api.get<ApiSuccess<DriverStats>>('/driver/stats');
+  return data.data;
+}
+
 //Sprint 2
 export async function acceptAssignmentRequest(id: number): Promise<DriverAssignment> {
   const { data } = await api.put<ApiSuccess<{ assignment: DriverAssignment }>>(

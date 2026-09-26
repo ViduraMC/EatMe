@@ -1,35 +1,58 @@
-import React, { useCallback, useState } from 'react';
-import {
-  ActivityIndicator,
-  FlatList,
-  Linking,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from 'react-native';
+import React, { useCallback, useMemo, useState } from 'react';
+import { Linking, RefreshControl, View } from 'react-native';
+import Animated from 'react-native-reanimated';
 import { useFocusEffect } from '@react-navigation/native';
-
-import { Card, Input, ScreenContainer, StatusPill } from '../../components';
+import {
+  AppText,
+  Avatar,
+  Badge,
+  Card,
+  Chip,
+  ChipRow,
+  EmptyState,
+  ErrorState,
+  IconButton,
+  LargeTitle,
+  Screen,
+  SearchBar,
+  SkeletonList,
+  TopBar,
+  useScrollY,
+} from '../../components';
 import { fetchDrivers } from '../../api/assignments.api';
-import { getErrorMessage } from '../../api/client';
-import { colours, fontSize, fontWeight, spacing } from '../../constants/theme';
+import { useI18n } from '../../i18n';
+import { makeStyles, useTheme } from '../../theme';
+import { enterListItem, useReducedMotion } from '../../theme/animations';
 import type { DriverInfo } from '../../types/assignment';
+import type { CoordinatorTabProps } from '../../navigation/types';
 
-export function DriversListScreen() {
+type Filter = 'all' | 'available' | 'busy';
+
+/**
+ * The driver roster: who is available right now, and a one-tap call for
+ * each. Available drivers sort first, the same order the assign screen uses.
+ */
+export function DriversListScreen(_props: CoordinatorTabProps<'DriversList'>) {
+  const theme = useTheme();
+  const styles = useStyles();
+  const { t } = useI18n();
+  const reduced = useReducedMotion();
+  const { scrollY, onScroll } = useScrollY();
+
   const [drivers, setDrivers] = useState<DriverInfo[]>([]);
+  const [search, setSearch] = useState('');
+  const [filter, setFilter] = useState<Filter>('all');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [search, setSearch] = useState('');
+  const [error, setError] = useState<unknown>(null);
 
   const load = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
-    setError(null);
     try {
       setDrivers(await fetchDrivers());
+      setError(null);
     } catch (err) {
-      setError(getErrorMessage(err));
+      setError(err);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -42,142 +65,177 @@ export function DriversListScreen() {
     }, [load]),
   );
 
-  const handleCall = (phone: string) => {
-    void Linking.openURL(`tel:${phone}`).catch(() => {
-      // Quietly fail if simulator has no dialer
-    });
-  };
+  const available = drivers.filter((d) => d.isAvailable).length;
+  const visible = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return drivers
+      .filter((d) =>
+        filter === 'available'
+          ? d.isAvailable
+          : filter === 'busy'
+            ? !d.isAvailable
+            : true,
+      )
+      .filter((d) => !q || d.name.toLowerCase().includes(q) || d.phone.includes(q))
+      .sort(
+        (a, b) =>
+          Number(b.isAvailable) - Number(a.isAvailable) || a.name.localeCompare(b.name),
+      );
+  }, [drivers, filter, search]);
 
-  const filteredDrivers = drivers.filter(
-    (d) =>
-      d.name.toLowerCase().includes(search.toLowerCase()) ||
-      d.email.toLowerCase().includes(search.toLowerCase()) ||
-      d.phone.includes(search),
+  const header = (
+    <View>
+      <LargeTitle
+        title={t('coordinator.driversTitle')}
+        subtitle={t('coordinator.driversSubtitle')}
+        scrollY={scrollY}
+      />
+      {!loading && !error && drivers.length > 0 ? (
+        <>
+          <SearchBar
+            value={search}
+            onChangeText={setSearch}
+            placeholder={t('coordinator.searchDrivers')}
+          />
+          <ChipRow style={styles.chips}>
+            <Chip
+              label={t('common.all')}
+              count={drivers.length}
+              selected={filter === 'all'}
+              onPress={() => setFilter('all')}
+            />
+            <Chip
+              label={t('coordinator.filterAvailable')}
+              count={available}
+              tone="safe"
+              selected={filter === 'available'}
+              onPress={() => setFilter('available')}
+            />
+            <Chip
+              label={t('coordinator.filterBusy')}
+              count={drivers.length - available}
+              tone="neutral"
+              selected={filter === 'busy'}
+              onPress={() => setFilter('busy')}
+            />
+          </ChipRow>
+        </>
+      ) : null}
+    </View>
   );
 
-  if (loading) {
-    return (
-      <ScreenContainer>
-        <View style={styles.centre}>
-          <ActivityIndicator size="large" color={colours.accent} />
-        </View>
-      </ScreenContainer>
+  let empty: React.ReactElement;
+  if (loading) empty = <SkeletonList count={4} />;
+  else if (error) empty = <ErrorState error={error} onRetry={() => void load()} />;
+  else if (drivers.length === 0)
+    empty = (
+      <EmptyState
+        illustration="deliverFood"
+        title={t('coordinator.noDrivers')}
+        message={t('coordinator.noDriversBody')}
+      />
     );
-  }
+  else
+    empty = (
+      <EmptyState
+        compact
+        illustration="emptyBowl"
+        title={t('coordinator.driversEmpty')}
+      />
+    );
 
   return (
-    <ScreenContainer>
-      <Input
-        label="Search Drivers"
-        placeholder="Search by name, email, or phone..."
-        value={search}
-        onChangeText={setSearch}
-      />
-
-      {!!error && <Text style={styles.error}>{error}</Text>}
-
-      <FlatList
-        data={filteredDrivers}
-        keyExtractor={(item) => String(item.userId)}
-        refreshing={refreshing}
-        onRefresh={() => void load(true)}
+    <Screen>
+      <TopBar title={t('coordinator.driversTitle')} scrollY={scrollY} />
+      <Animated.FlatList
+        data={loading || error ? [] : visible}
+        keyExtractor={(d) => String(d.userId)}
+        onScroll={onScroll}
+        scrollEventThrottle={16}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+        ListHeaderComponent={header}
+        ListEmptyComponent={empty}
+        contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={
-          filteredDrivers.length === 0 ? styles.emptyWrap : undefined
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => void load(true)}
+            tintColor={theme.colors.brand}
+            colors={[theme.colors.brand]}
+          />
         }
-        ListEmptyComponent={
-          <View style={styles.centre}>
-            <Text style={styles.emptyText}>
-              {search ? 'No drivers match your search' : 'No drivers available'}
-            </Text>
-          </View>
-        }
-        renderItem={({ item }) => (
-          <Card style={styles.driverCard}>
-            <View style={styles.cardHeader}>
-              <View style={styles.driverMeta}>
-                <Text style={styles.driverName}>{item.name}</Text>
-                <Text style={styles.driverEmail}>{item.email}</Text>
+        renderItem={({ item, index }) => (
+          <Animated.View entering={enterListItem(index, reduced)}>
+            <Card variant="flat" style={styles.row}>
+              <View>
+                <Avatar name={item.name} size={46} />
+                <View
+                  style={[
+                    styles.dot,
+                    {
+                      backgroundColor: item.isAvailable
+                        ? theme.colors.safe
+                        : theme.colors.borderStrong,
+                    },
+                  ]}
+                />
               </View>
-              <StatusPill
-                label={item.isAvailable ? 'Available' : 'Busy'}
-                tone={item.isAvailable ? 'safe' : 'neutral'}
+              <View style={styles.flex}>
+                <AppText variant="bodyStrong">{item.name}</AppText>
+                <AppText variant="caption" color="textSecondary">
+                  {item.phone}
+                </AppText>
+                <Badge
+                  size="sm"
+                  label={
+                    item.isAvailable ? t('settings.available') : t('settings.unavailable')
+                  }
+                  tone={item.isAvailable ? 'safe' : 'neutral'}
+                  style={styles.badge}
+                />
+              </View>
+              <IconButton
+                icon="call"
+                variant="tonal"
+                tone="olive"
+                onPress={() =>
+                  void Linking.openURL(`tel:${item.phone.replace(/\s/g, '')}`)
+                }
+                accessibilityLabel={t('coordinator.callName', { name: item.name })}
               />
-            </View>
-
-            <View style={styles.detailRow}>
-              <Text style={styles.label}>Address:</Text>
-              <Text style={styles.value}>{item.address}</Text>
-            </View>
-
-            <View style={styles.detailRow}>
-              <Text style={styles.label}>Phone:</Text>
-              <TouchableOpacity onPress={() => handleCall(item.phone)}>
-                <Text style={styles.phoneLink}>{item.phone}</Text>
-              </TouchableOpacity>
-            </View>
-          </Card>
+            </Card>
+          </Animated.View>
         )}
       />
-    </ScreenContainer>
+    </Screen>
   );
 }
 
-const styles = StyleSheet.create({
-  centre: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  error: {
-    color: colours.critical,
-    fontSize: fontSize.secondary,
-    marginBottom: spacing.sm,
+const useStyles = makeStyles((t) => ({
+  content: {
+    paddingHorizontal: t.layout.screenPadding,
+    paddingBottom: t.spacing.xxl,
+    flexGrow: 1,
   },
-  emptyWrap: { flexGrow: 1, justifyContent: 'center' },
-  emptyText: {
-    fontSize: fontSize.body,
-    color: colours.textSecondary,
-    textAlign: 'center',
-  },
-  driverCard: {
-    padding: spacing.md,
-  },
-  cardHeader: {
+  chips: { marginTop: t.spacing.sm + 4, marginBottom: t.spacing.md },
+  flex: { flex: 1 },
+  row: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: spacing.md,
-    gap: spacing.sm,
+    alignItems: 'center',
+    gap: t.spacing.sm + 4,
+    marginBottom: t.spacing.sm + 2,
   },
-  driverMeta: {
-    flexShrink: 1,
+  dot: {
+    position: 'absolute',
+    right: 0,
+    bottom: 0,
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    borderWidth: 2,
+    borderColor: t.colors.surface,
   },
-  driverName: {
-    fontSize: fontSize.body,
-    fontWeight: fontWeight.semibold,
-    color: colours.textPrimary,
-  },
-  driverEmail: {
-    fontSize: fontSize.secondary,
-    color: colours.textSecondary,
-    marginTop: 2,
-  },
-  detailRow: {
-    flexDirection: 'row',
-    marginTop: spacing.xs,
-    gap: spacing.xs,
-  },
-  label: {
-    fontSize: fontSize.secondary,
-    color: colours.textSecondary,
-    width: 80,
-  },
-  value: {
-    fontSize: fontSize.secondary,
-    color: colours.textPrimary,
-    flex: 1,
-  },
-  phoneLink: {
-    fontSize: fontSize.secondary,
-    color: colours.accent,
-    fontWeight: fontWeight.medium,
-    textDecorationLine: 'underline',
-  },
-});
+  badge: { marginTop: 4 },
+}));
