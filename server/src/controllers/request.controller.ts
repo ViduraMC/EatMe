@@ -106,3 +106,40 @@ export async function cancelRequest(req: Request, res: Response): Promise<void> 
   );
   sendSuccess(res, { request });
 }
+
+import * as assignmentService from '../services/assignment.service';
+
+export const confirmDropoffRecipientSchema = z.object({
+  notes: z
+    .string()
+    .trim()
+    .max(500, 'Notes must be under 500 characters')
+    .optional()
+    .nullable(),
+});
+
+/** GET /api/requests/deliveries/pending-dropoff */
+export async function listPendingDropoffs(req: Request, res: Response): Promise<void> {
+  const assignments = await assignmentService.listPendingDropoffsForRecipient(
+    req.user!.userId,
+  );
+  sendSuccess(res, { assignments });
+}
+
+/** PUT /api/requests/deliveries/:id/confirm-dropoff */
+export async function confirmDropoff(req: Request, res: Response): Promise<void> {
+  const assignmentId = Number(req.params.id);
+  if (!Number.isInteger(assignmentId) || assignmentId <= 0) {
+    throw ApiError.badRequest('Invalid assignment id');
+  }
+
+  const input = req.body as z.infer<typeof confirmDropoffRecipientSchema>;
+
+  const assignment = await assignmentService.confirmDropoffAsRecipient(
+    assignmentId,
+    req.user!.userId,
+    { notes: input?.notes ?? null },
+  );
+
+  sendSuccess(res, { assignment });
+}

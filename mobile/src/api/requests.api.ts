@@ -42,10 +42,32 @@ export async function fetchRequest(requestId: number): Promise<DonationRequest> 
   return data.data.request;
 }
 
+import type { ConfirmDropoffPayload, RecipientAssignment } from '../types/assignment';
+
 /** Withdraw a request. Only works while it is still pending. */
 export async function cancelRequest(requestId: number): Promise<DonationRequest> {
   const { data } = await api.patch<ApiSuccess<{ request: DonationRequest }>>(
     `/requests/${requestId}/cancel`,
   );
   return data.data.request;
+}
+
+/** Active deliveries waiting on this recipient to confirm receipt. */
+export async function fetchPendingDropoffs(): Promise<RecipientAssignment[]> {
+  const { data } = await api.get<ApiSuccess<{ assignments: RecipientAssignment[] }>>(
+    '/requests/deliveries/pending-dropoff',
+  );
+  return data.data.assignments;
+}
+
+/** Confirms the recipient's side of a delivery dropoff. */
+export async function confirmDropoff(
+  assignmentId: number,
+  payload: ConfirmDropoffPayload = {},
+): Promise<RecipientAssignment> {
+  const { data } = await api.put<ApiSuccess<{ assignment: RecipientAssignment }>>(
+    `/requests/deliveries/${assignmentId}/confirm-dropoff`,
+    payload,
+  );
+  return data.data.assignment;
 }

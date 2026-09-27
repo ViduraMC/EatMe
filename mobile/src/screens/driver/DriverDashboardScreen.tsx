@@ -184,9 +184,22 @@ export function DriverDashboardScreen(_props: DriverTabProps<'DriverDashboard'>)
     if (!active) return;
     try {
       const updated = await confirmDropoffRequest(active.assignmentId);
+      toast.show({
+        type: 'success',
+        title:
+          updated.status === 'completed'
+            ? t('driver.dropoffCompletedToast')
+            : t('driver.waitingRecipientToast'),
+        message:
+          updated.status === 'completed'
+            ? t('driver.dropoffBothCompleted')
+            : t('driver.waitingRecipientBody'),
+      });
       setTimeout(() => {
         replace(updated);
-        setDelivered(updated);
+        if (updated.status === 'completed') {
+          setDelivered(updated);
+        }
         void fetchDriverStats()
           .then(setStats)
           .catch(() => undefined);

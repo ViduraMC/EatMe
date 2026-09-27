@@ -562,6 +562,33 @@ export const en = {
       'Browse the food available near you and request what your organisation needs.',
     browseFood: 'Browse food',
     myFilterEmpty: 'No requests with this status.',
+    confirmDropoff: 'Confirm receipt',
+    dropoffTitle: 'Confirm delivery receipt',
+    dropoffSubtitle:
+      'Verify items received from the driver and slide to confirm handover.',
+    dropoffsEmptyTitle: 'No pending deliveries',
+    dropoffsEmptyBody:
+      'When a driver brings your food delivery, you will be able to confirm receipt here.',
+    dropoffConfirmed: 'Delivery receipt confirmed',
+    confirmedBothDropoff:
+      'Delivery completed! Both you and the driver have confirmed receipt.',
+    confirmedYouDropoff: 'Receipt confirmed. Waiting for driver confirmation.',
+    alreadyConfirmedDropoff: 'You have already confirmed receipt of this food delivery.',
+    dropoffChecklist: 'Verify items received',
+    dropoffChecklistHint: 'Tick off each item delivered before confirming.',
+    dropoffNotes: 'Notes for driver / coordinator',
+    dropoffPlaceholder: 'Condition of food, timing, or delivery feedback',
+    slideToConfirmDropoff: 'Slide to confirm receipt',
+    callDriver: 'Call {{name}}',
+    driver: 'Driver',
+    noteFromCoordinator: 'Note from coordinator',
+    checkAllFirstDropoff: 'Tick all items received to unlock confirmation',
+    dropoffsWaiting: {
+      one: '{{count}} delivery needs your confirmation',
+      other: '{{count}} deliveries need your confirmation',
+    },
+    dropoffsWaitingBody:
+      'A driver has arrived with your food. Confirm once you have received the items.',
   },
 
   coordinator: {
@@ -694,6 +721,12 @@ export const en = {
     waitingDonor: 'Waiting for the donor to confirm',
     waitingDonorBody:
       'The delivery moves to "in transit" once they do. Pull down to refresh.',
+    waitingRecipient: 'Waiting for recipient confirmation',
+    waitingRecipientBody:
+      'You confirmed dropoff. The delivery completes once the recipient confirms receipt.',
+    waitingRecipientToast: 'Waiting for recipient confirmation',
+    dropoffCompletedToast: 'Delivery completed!',
+    dropoffBothCompleted: 'Both you and the recipient have confirmed delivery.',
     slideDropoff: 'Slide to confirm drop-off',
     dropoffDone: 'Delivered',
     checkAllFirst: 'Tick every item to confirm the pickup',

@@ -1,10 +1,13 @@
 import { Router } from 'express';
 import {
   cancelRequest,
+  confirmDropoff,
+  confirmDropoffRecipientSchema,
   createRequest,
   createRequestSchema,
   getRequest,
   listMyRequests,
+  listPendingDropoffs,
 } from '../controllers/request.controller';
 import { authenticate } from '../middleware/auth';
 import { requireRole } from '../middleware/requireRole';
@@ -14,18 +17,26 @@ import { asyncHandler } from '../utils/asyncHandler';
 /**
  * /api/requests — Food Requests. Owner: Haritha.
  * Endpoint contract: docs/05-api-plan.md.
- *
- * Accepting and rejecting are NOT here. Sprint 2 moved approval to the
- * Donation Coordinator, who already owns matching and assignment, so those
- * endpoints belong to the coordinator module.
  */
 const router = Router();
 
 router.use(authenticate);
 
-// Order matters: /mine must be declared before /:id, otherwise Express matches
-// "mine" as an id and the request 400s on a non-numeric id.
+// Order matters: literal paths must be declared before /:id
 router.get('/mine', requireRole('recipient'), asyncHandler(listMyRequests));
+
+router.get(
+  '/deliveries/pending-dropoff',
+  requireRole('recipient'),
+  asyncHandler(listPendingDropoffs),
+);
+
+router.put(
+  '/deliveries/:id/confirm-dropoff',
+  requireRole('recipient'),
+  validateBody(confirmDropoffRecipientSchema),
+  asyncHandler(confirmDropoff),
+);
 
 router.post(
   '/',

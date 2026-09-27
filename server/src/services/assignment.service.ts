@@ -23,6 +23,7 @@ const OWNED_ASSIGNMENT_SELECT = {
   pickupDonorConfirmedAt: true,
   pickupDriverConfirmedAt: true,
   dropoffDriverConfirmedAt: true,
+  dropoffRecipientConfirmedAt: true,
 } satisfies Record<string, true>;
 
 type OwnedAssignment = {
@@ -33,6 +34,7 @@ type OwnedAssignment = {
   pickupDonorConfirmedAt: Date | null;
   pickupDriverConfirmedAt: Date | null;
   dropoffDriverConfirmedAt: Date | null;
+  dropoffRecipientConfirmedAt: Date | null;
 };
 
 /**
@@ -207,17 +209,53 @@ export interface ConfirmDropoffInput {
 }
 
 /**
+ * Decides what status an assignment should hold after a dropoff confirmation.
+ *
+ * An assignment becomes completed only when BOTH sides have confirmed the
+ * drop off (driver side and recipient side).
+ */
+export function statusAfterDropoffConfirmation(assignment: {
+  status: AssignmentStatus;
+  dropoffDriverConfirmedAt: Date | null;
+  dropoffRecipientConfirmedAt: Date | null;
+}): AssignmentStatus {
+  if (
+    assignment.status === 'completed' ||
+    assignment.status === 'declined' ||
+    assignment.status === 'cancelled'
+  ) {
+    return assignment.status;
+  }
+
+  const bothConfirmed =
+    assignment.dropoffDriverConfirmedAt !== null &&
+    assignment.dropoffRecipientConfirmedAt !== null;
+
+  return bothConfirmed ? 'completed' : assignment.status;
+}
+
+export async function settleDropoffStatus(assignmentId: number): Promise<void> {
+  const confirmedAt = new Date();
+  await prisma.deliveryAssignment.updateMany({
+    where: {
+      assignmentId,
+      status: 'in_transit',
+      dropoffDriverConfirmedAt: { not: null },
+      dropoffRecipientConfirmedAt: { not: null },
+    },
+    data: {
+      status: 'completed',
+      completedAt: confirmedAt,
+    },
+  });
+}
+
+/**
  * US-DR03: The driver confirms the food has been handed to the recipient.
  *
  * Only valid once the assignment is in_transit, i.e. both driver and donor
- * have already confirmed pickup — an assignment still sitting in accepted
- * means pickup was never fully confirmed, so there is nothing to drop off
- * yet.
- *
- * Writes dropoff_driver_confirmed_at and completed_at together and moves the
- * assignment straight to completed. dropoff_recipient_confirmed_at stays
- * reserved on the schema for a future recipient-side confirmation ticket;
- * this one only covers the driver's side of drop off.
+ * have already confirmed pickup. Writes dropoff_driver_confirmed_at and,
+ * when the recipient has also confirmed, moves the assignment to completed.
  */
 export async function confirmDropoffAsDriver(
   assignmentId: number,
@@ -247,16 +285,152 @@ export async function confirmDropoffAsDriver(
   }
 
   const confirmedAt = new Date();
+  const nextStatus = statusAfterDropoffConfirmation({
+    status: existing.status,
+    dropoffDriverConfirmedAt: confirmedAt,
+    dropoffRecipientConfirmedAt: existing.dropoffRecipientConfirmedAt,
+  });
 
-  return prisma.deliveryAssignment.update({
+  await prisma.deliveryAssignment.update({
     where: { assignmentId },
     data: {
       dropoffDriverConfirmedAt: confirmedAt,
-      completedAt: confirmedAt,
-      status: 'completed',
+      status: nextStatus,
+      ...(nextStatus === 'completed' ? { completedAt: confirmedAt } : {}),
       ...(input.notes ? { dropoffNotes: input.notes } : {}),
     },
+  });
+
+  await settleDropoffStatus(assignmentId);
+
+  return prisma.deliveryAssignment.findUniqueOrThrow({
+    where: { assignmentId },
     select: driverAssignmentSelect,
+  });
+}
+
+export const recipientAssignmentInclude = {
+  driver: {
+    select: { userId: true, name: true, phone: true },
+  },
+  coordinator: {
+    select: { userId: true, name: true, phone: true },
+  },
+  request: {
+    select: {
+      requestId: true,
+      recipientId: true,
+      status: true,
+      message: true,
+      createdAt: true,
+      listing: {
+        select: {
+          listingId: true,
+          title: true,
+          pickupAddress: true,
+          pickupWindowStart: true,
+          pickupWindowEnd: true,
+          donor: {
+            select: { userId: true, name: true, organisationName: true, phone: true },
+          },
+        },
+      },
+      recipient: {
+        select: {
+          userId: true,
+          name: true,
+          organisationName: true,
+          phone: true,
+          address: true,
+        },
+      },
+      items: {
+        include: {
+          item: {
+            select: { itemId: true, foodName: true, unit: true, category: true },
+          },
+        },
+      },
+    },
+  },
+};
+
+export async function getRecipientAssignment(assignmentId: number, recipientId: number) {
+  const assignment = await prisma.deliveryAssignment.findUnique({
+    where: { assignmentId },
+    include: recipientAssignmentInclude,
+  });
+
+  if (!assignment || assignment.request.recipientId !== recipientId) {
+    throw ApiError.notFound('That delivery does not exist');
+  }
+
+  return assignment;
+}
+
+/**
+ * The recipient confirms receipt of the food delivery from the driver.
+ */
+export async function confirmDropoffAsRecipient(
+  assignmentId: number,
+  recipientId: number,
+  input: ConfirmDropoffInput = {},
+) {
+  const existing = await getRecipientAssignment(assignmentId, recipientId);
+
+  if (existing.dropoffRecipientConfirmedAt) {
+    throw ApiError.badRequest(
+      'You have already confirmed this delivery receipt. It cannot be confirmed twice.',
+    );
+  }
+
+  if (existing.status === 'declined' || existing.status === 'cancelled') {
+    throw ApiError.badRequest(
+      'This delivery is no longer active, so there is nothing to confirm',
+    );
+  }
+  if (existing.status === 'completed') {
+    throw ApiError.badRequest('This delivery is already complete');
+  }
+  if (existing.status !== 'in_transit') {
+    throw ApiError.badRequest(
+      'Pickup must be confirmed before delivery drop off can be confirmed',
+    );
+  }
+
+  const confirmedAt = new Date();
+  const nextStatus = statusAfterDropoffConfirmation({
+    status: existing.status,
+    dropoffDriverConfirmedAt: existing.dropoffDriverConfirmedAt,
+    dropoffRecipientConfirmedAt: confirmedAt,
+  });
+
+  await prisma.deliveryAssignment.update({
+    where: { assignmentId },
+    data: {
+      dropoffRecipientConfirmedAt: confirmedAt,
+      status: nextStatus,
+      ...(nextStatus === 'completed' ? { completedAt: confirmedAt } : {}),
+      ...(input.notes ? { dropoffNotes: input.notes } : {}),
+    },
+  });
+
+  await settleDropoffStatus(assignmentId);
+
+  return prisma.deliveryAssignment.findUniqueOrThrow({
+    where: { assignmentId },
+    include: recipientAssignmentInclude,
+  });
+}
+
+export async function listPendingDropoffsForRecipient(recipientId: number) {
+  return prisma.deliveryAssignment.findMany({
+    where: {
+      request: { recipientId },
+      status: { in: ['in_transit', 'completed', 'accepted'] },
+    },
+    include: recipientAssignmentInclude,
+    orderBy: { createdAt: 'desc' },
   });
 }
 

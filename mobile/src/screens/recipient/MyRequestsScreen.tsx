@@ -13,6 +13,7 @@ import {
   EmptyState,
   ErrorState,
   Icon,
+  InfoBanner,
   LargeTitle,
   Screen,
   SkeletonList,
@@ -23,7 +24,12 @@ import {
   useToast,
   type TimelineStep,
 } from '../../components';
-import { cancelRequest, fetchMyRequests } from '../../api/requests.api';
+import {
+  cancelRequest,
+  fetchMyRequests,
+  fetchPendingDropoffs,
+} from '../../api/requests.api';
+import { setPendingDropoffs, usePendingDropoffs } from './dropoffBadge';
 import { useNow } from '../../hooks/useNow';
 import { useI18n } from '../../i18n';
 import { describeError } from '../../i18n/errors';
@@ -31,6 +37,7 @@ import { useFormat } from '../../i18n/format';
 import { makeStyles, useTheme } from '../../theme';
 import {
   enterListItem,
+  enterSection,
   layoutTransition,
   useReducedMotion,
 } from '../../theme/animations';
@@ -59,6 +66,7 @@ export function MyRequestsScreen({ navigation }: RecipientTabProps<'MyRequests'>
   const now = useNow(60_000);
   const reduced = useReducedMotion();
   const { scrollY, onScroll } = useScrollY();
+  const pendingDropoffs = usePendingDropoffs();
 
   const [requests, setRequests] = useState<DonationRequest[]>([]);
   const [filter, setFilter] = useState<Filter>('all');
@@ -70,7 +78,12 @@ export function MyRequestsScreen({ navigation }: RecipientTabProps<'MyRequests'>
   const load = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
     try {
-      setRequests(await fetchMyRequests());
+      const [reqs, dropoffs] = await Promise.all([
+        fetchMyRequests(),
+        fetchPendingDropoffs().catch(() => []),
+      ]);
+      setRequests(reqs);
+      setPendingDropoffs(dropoffs.filter((a) => !a.dropoffRecipientConfirmedAt).length);
       setError(null);
     } catch (err) {
       setError(err);
@@ -135,6 +148,23 @@ export function MyRequestsScreen({ navigation }: RecipientTabProps<'MyRequests'>
         subtitle={t('recipient.myRequestsSubtitle')}
         scrollY={scrollY}
       />
+      {pendingDropoffs > 0 ? (
+        <Animated.View entering={enterSection(0, reduced)} style={styles.bannerMargin}>
+          <InfoBanner
+            tone="brand"
+            icon="mc:truck-check-outline"
+            title={t('recipient.dropoffsWaiting', { count: pendingDropoffs })}
+            message={t('recipient.dropoffsWaitingBody')}
+            action={
+              <Button
+                label={t('donor.confirmNow')}
+                size="sm"
+                onPress={() => navigation.navigate('ConfirmDropoff')}
+              />
+            }
+          />
+        </Animated.View>
+      ) : null}
       {!loading && !error && requests.length > 0 ? (
         <ChipRow style={styles.chips}>
           {FILTERS.filter((key) => key === 'all' || counts[key] > 0).map((key) => (
@@ -326,6 +356,7 @@ const useStyles = makeStyles((t) => ({
     flexGrow: 1,
   },
   chips: { marginBottom: t.spacing.md },
+  bannerMargin: { marginBottom: t.spacing.md },
   flex: { flex: 1 },
   head: { flexDirection: 'row', alignItems: 'flex-start', gap: t.spacing.sm },
   donorRow: {
