@@ -141,6 +141,50 @@ export interface ConfirmPickupPayload {
   notes?: string | null;
 }
 
+export interface ConfirmDropoffPayload {
+  notes?: string | null;
+}
+
+/** An assignment as the recipient sees it for drop-off confirmation. */
+export interface RecipientAssignment {
+  assignmentId: number;
+  requestId: number;
+  coordinatorId: number;
+  driverId: number;
+  status: AssignmentStatus;
+  noteToDriver: string | null;
+  declineReason: string | null;
+  assignedAt: string;
+  respondedAt: string | null;
+  pickupDonorConfirmedAt: string | null;
+  pickupDriverConfirmedAt: string | null;
+  pickupNotes: string | null;
+  dropoffDriverConfirmedAt: string | null;
+  dropoffRecipientConfirmedAt: string | null;
+  dropoffNotes: string | null;
+  completedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  driver: AssignmentDriver;
+  coordinator: AssignmentDriver;
+  request: {
+    requestId: number;
+    status: RequestStatus;
+    message: string | null;
+    createdAt: string;
+    listing: {
+      listingId: number;
+      title: string;
+      pickupAddress: string;
+      pickupWindowStart: string;
+      pickupWindowEnd: string;
+      donor: RequesterSummary;
+    };
+    recipient: RequesterSummary;
+    items: RequestedItem[];
+  };
+}
+
 // ── US-C02: Coordinator creates / rejects assignments ─────────────────────────
 
 export interface CreateAssignmentPayload {

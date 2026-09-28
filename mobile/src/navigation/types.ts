@@ -80,6 +80,7 @@ export type DonorStackProps<T extends keyof DonorStackParamList> = NativeStackSc
 export type RecipientTabParamList = {
   BrowseListings: undefined;
   MyRequests: undefined;
+  ConfirmDropoff: { assignmentId?: number } | undefined;
   RecipientProfile: undefined;
 };
 

@@ -34,6 +34,8 @@ import { BrowseListingsScreen } from '../screens/recipient/BrowseListingsScreen'
 import { ListingDetailScreen as RecipientListingDetailScreen } from '../screens/recipient/ListingDetailScreen';
 import { CreateRequestScreen } from '../screens/recipient/CreateRequestScreen';
 import { MyRequestsScreen } from '../screens/recipient/MyRequestsScreen';
+import { ConfirmDropoffScreen } from '../screens/recipient/ConfirmDropoffScreen';
+import { usePendingDropoffs } from '../screens/recipient/dropoffBadge';
 import { CoordinatorHomeScreen } from '../screens/coordinator/CoordinatorHomeScreen';
 import { DriversListScreen } from '../screens/coordinator/DriversListScreen';
 import { CreateAssignmentScreen } from '../screens/coordinator/CreateAssignmentScreen';
@@ -263,12 +265,14 @@ function DonorNavigator() {
 const RECIPIENT_ICONS: TabIcons = {
   BrowseListings: { icon: 'mc:food-outline', iconActive: 'mc:food' },
   MyRequests: { icon: 'mc:clipboard-list-outline', iconActive: 'mc:clipboard-list' },
+  ConfirmDropoff: { icon: 'mc:truck-check-outline', iconActive: 'mc:truck-check' },
   RecipientProfile: { icon: 'person-circle-outline', iconActive: 'person-circle' },
 };
 
 function RecipientTabs() {
   const t = useT();
   const options = useTabOptions();
+  const pendingDropoffs = usePendingDropoffs();
   return (
     <RecipientTab.Navigator
       screenOptions={options}
@@ -283,6 +287,14 @@ function RecipientTabs() {
         name="MyRequests"
         component={MyRequestsScreen}
         options={{ title: t('tabs.myRequests') }}
+      />
+      <RecipientTab.Screen
+        name="ConfirmDropoff"
+        component={ConfirmDropoffScreen}
+        options={{
+          title: t('recipient.confirmDropoff'),
+          tabBarBadge: pendingDropoffs > 0 ? pendingDropoffs : undefined,
+        }}
       />
       <RecipientTab.Screen
         name="RecipientProfile"

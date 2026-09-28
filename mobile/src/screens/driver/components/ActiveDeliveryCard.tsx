@@ -252,6 +252,13 @@ export function ActiveDeliveryCard({
           title={t('driver.waitingDonor')}
           message={t('driver.waitingDonorBody')}
         />
+      ) : assignment.dropoffDriverConfirmedAt ? (
+        <InfoBanner
+          tone="urgent"
+          icon="hourglass-outline"
+          title={t('driver.waitingRecipient')}
+          message={t('driver.waitingRecipientBody')}
+        />
       ) : (
         <SlideToConfirm
           key="dropoff"

@@ -560,6 +560,32 @@ export const si: Widen<Dictionary> = {
     myEmptyBody: 'ඔබ අසල ලබාගත හැකි ආහාර බලා ඔබේ සංවිධානයට අවශ්‍ය දේ ඉල්ලන්න.',
     browseFood: 'ආහාර බලන්න',
     myFilterEmpty: 'මෙම තත්ත්වය සහිත ඉල්ලීම් නැත.',
+    confirmDropoff: 'ලැබුණු බව තහවුරු කරන්න',
+    dropoffTitle: 'බෙදාහැරීම ලැබුණු බව තහවුරු කරන්න',
+    dropoffSubtitle:
+      'රියදුරුගෙන් ලැබුණු අයිතම පරීක්ෂා කර භාරදීම තහවුරු කිරීමට ස්ලයිඩ් කරන්න.',
+    dropoffsEmptyTitle: 'බලාපොරොත්තුවෙන් සිටින බෙදාහැරීම් නැත',
+    dropoffsEmptyBody:
+      'රියදුරෙකු ඔබේ ආහාර බෙදාහැරීම ගෙන ආ විට, ඔබට මෙහිදී එය ලැබුණු බව තහවුරු කළ හැක.',
+    dropoffConfirmed: 'ආහාර ලැබුණු බව තහවුරු කළා',
+    confirmedBothDropoff: 'බෙදාහැරීම සම්පූර්ණයි! ඔබ සහ රියදුරු යන දෙදෙනාම තහවුරු කළා.',
+    confirmedYouDropoff: 'ලැබුණු බව තහවුරු කළා. රියදුරු තහවුරු කරන තෙක් බලා සිටී.',
+    alreadyConfirmedDropoff: 'ඔබ දැනටමත් මෙම ආහාර බෙදාහැරීම ලැබුණු බව තහවුරු කර ඇත.',
+    dropoffChecklist: 'ලැබුණු අයිතම පරීක්ෂා කරන්න',
+    dropoffChecklistHint: 'තහවුරු කිරීමට පෙර ලැබුණු සෑම අයිතමයක්ම ලකුණු කරන්න.',
+    dropoffNotes: 'රියදුරු / සම්බන්ධීකාරක සඳහා සටහන්',
+    dropoffPlaceholder: 'ආහාරවල තත්ත්වය, වේලාව හෝ බෙදාහැරීමේ ප්‍රතිචාර',
+    slideToConfirmDropoff: 'තහවුරු කිරීමට ස්ලයිඩ් කරන්න',
+    callDriver: '{{name}} ට අමතන්න',
+    driver: 'රියදුරු',
+    noteFromCoordinator: 'සම්බන්ධීකාරකගෙන් සටහනක්',
+    checkAllFirstDropoff: 'තහවුරු කිරීම අගුළු ඇරීමට ලැබුණු සියලුම අයිතම ලකුණු කරන්න',
+    dropoffsWaiting: {
+      one: 'බෙදාහැරීමක් ඔබ තහවුරු කරන තෙක් බලා සිටී',
+      other: 'බෙදාහැරීම් {{count}}ක් ඔබ තහවුරු කරන තෙක් බලා සිටී',
+    },
+    dropoffsWaitingBody:
+      'රියදුරෙකු ඔබේ ආහාර බෙදාහැරීම ගෙනවිත් ඇත. ලැබුණු පසු තහවුරු කරන්න.',
   },
 
   coordinator: {
@@ -692,6 +718,12 @@ export const si: Widen<Dictionary> = {
     waitingDonor: 'දායකයා තහවුරු කරන තෙක් රැඳී සිටී',
     waitingDonorBody:
       'ඔවුන් තහවුරු කළ පසු බෙදාහැරීම "ගමනේ" ලෙස වෙනස් වේ. යාවත්කාලීන කිරීමට පහළට අදින්න.',
+    waitingRecipient: 'ලබන්නා තහවුරු කරන තෙක් බලා සිටී',
+    waitingRecipientBody:
+      'ඔබ භාරදීම තහවුරු කළා. ලබන්නා ලැබුණු බව තහවුරු කළ පසු බෙදාහැරීම සම්පූර්ණ වේ.',
+    waitingRecipientToast: 'ලබන්නා තහවුරු කරන තෙක් බලා සිටී',
+    dropoffCompletedToast: 'බෙදාහැරීම සම්පූර්ණයි!',
+    dropoffBothCompleted: 'ඔබ සහ ලබන්නා යන දෙදෙනාම බෙදාහැරීම තහවුරු කළා.',
     slideDropoff: 'භාරදීම තහවුරු කිරීමට ලිස්සන්න',
     dropoffDone: 'භාර දුන්නා',
     checkAllFirst: 'භාරගැනීම තහවුරු කිරීමට සෑම අයිතමයක්ම සලකුණු කරන්න',
