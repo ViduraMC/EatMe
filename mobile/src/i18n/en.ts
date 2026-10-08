@@ -811,7 +811,7 @@ export const en = {
     staffRole: 'Role',
     staffPhoneHelp: 'Exactly 10 digits, e.g. 0771234567',
     staffPasswordHelp: 'They can use this to sign in. At least 8 characters.',
-    phone10: 'Enter exactly 10 digits',
+    phone10: 'Enter a valid Sri Lankan mobile number (07XXXXXXXX)',
     usersEmpty: 'No users match.',
     contact: 'Contact',
     activity: 'Activity',

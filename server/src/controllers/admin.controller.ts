@@ -33,7 +33,7 @@ const createStaffSchema = z.object({
   phone: z
     .string()
     .trim()
-    .regex(/^\d{10}$/, 'Phone number must contain exactly 10 digits'),
+    .regex(/^07[01245678]\d{7}$/, 'Enter a valid Sri Lankan mobile number'),
   address: z.string().trim().min(5),
   role: z.enum(['coordinator', 'driver']),
 });
@@ -44,7 +44,7 @@ const updateStaffSchema = z.object({
   phone: z
     .string()
     .trim()
-    .regex(/^\d{10}$/, 'Phone number must contain exactly 10 digits'),
+    .regex(/^07[01245678]\d{7}$/, 'Enter a valid Sri Lankan mobile number'),
   address: z.string().trim().min(5),
 });
 
@@ -58,7 +58,18 @@ const createReportSchema = z
   .refine((data) => data.startDate <= data.endDate, {
     message: 'Start date cannot be after end date',
     path: ['endDate'],
-  });
+  })
+  .refine(
+    (data) => {
+      const tomorrow = new Date();
+      tomorrow.setHours(24, 0, 0, 0);
+      return data.endDate.getTime() < tomorrow.getTime();
+    },
+    {
+      message: 'Report end date cannot be in the future',
+      path: ['endDate'],
+    },
+  );
 
 const updateReportSchema = z.object({
   title: z.string().trim().min(2).max(150),

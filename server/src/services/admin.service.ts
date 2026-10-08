@@ -725,6 +725,9 @@ export async function updateAdminReport(
   if (report.status === 'finalized') {
     throw ApiError.conflict('Finalized reports cannot be edited');
   }
+  if (report.title.trim() === input.title.trim()) {
+    throw ApiError.conflict('Report title has not changed');
+  }
 
   return prisma.report.update({
     where: {

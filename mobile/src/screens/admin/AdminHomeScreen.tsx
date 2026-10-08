@@ -95,6 +95,20 @@ export function AdminHomeScreen({ navigation }: AdminTabProps<'AdminHome'>) {
   const reduced = useReducedMotion();
   const { scrollY, onScroll } = useScrollY();
 
+  const [greetingTime, setGreetingTime] = useState(() => new Date());
+
+  useFocusEffect(
+    useCallback(() => {
+      setGreetingTime(new Date());
+
+      const interval = setInterval(() => {
+        setGreetingTime(new Date());
+      }, 60_000);
+
+      return () => clearInterval(interval);
+    }, []),
+  );
+
   const [stats, setStats] = useState<AdminStats | null>(null);
   const [listings, setListings] = useState<AdminListing[]>([]);
   const [requests, setRequests] = useState<AdminRequest[]>([]);
@@ -327,8 +341,8 @@ export function AdminHomeScreen({ navigation }: AdminTabProps<'AdminHome'>) {
       >
         <LargeTitle
           eyebrow={t('donor.greetingName', {
-            greeting: f.greeting(),
-            name: user?.name.split(' ')[0] ?? '',
+            greeting: f.greeting(greetingTime),
+            name: 'Administrator',
           })}
           title={t('admin.overviewTitle')}
           scrollY={scrollY}

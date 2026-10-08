@@ -287,7 +287,16 @@ export function AdminUsersScreen({ route }: AdminTabProps<'AdminUsers'>) {
   async function runAction(user: AdminUser, action: StatusAction) {
     const a = ACTION[action];
     const name = user.organisationName ?? user.name;
+
     setSelected(null);
+
+    // UserSheet is a native Modal-backed BottomSheet. Let it finish closing
+    // before presenting the confirmation sheet, otherwise the two native
+    // modals can overlap and leave the Admin screen unable to receive touches.
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, 300);
+    });
+
     const ok = await confirm({
       title: t(a.title, { name }),
       message: t(a.body),
@@ -308,6 +317,12 @@ export function AdminUsersScreen({ route }: AdminTabProps<'AdminUsers'>) {
 
   async function removeStaff(user: AdminUser) {
     setSelected(null);
+
+    // Wait for UserSheet to fully dismiss before opening confirmation.
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, 300);
+    });
+
     const ok = await confirm({
       title: t('admin.deleteTitle', { name: user.name }),
       message: t('admin.deleteBody'),
@@ -330,21 +345,33 @@ export function AdminUsersScreen({ route }: AdminTabProps<'AdminUsers'>) {
 
   function openStaff(user: AdminUser | null) {
     setSelected(null);
-    setEditing(user);
-    setForm(
-      user && isStaff(user)
-        ? {
-            name: user.name,
-            email: user.email,
-            phone: user.phone,
-            address: user.address,
-            password: '',
-            role: user.role,
-          }
-        : EMPTY_FORM,
-    );
-    setShowErrors(false);
-    setStaffOpen(true);
+
+    const open = () => {
+      setEditing(user);
+      setForm(
+        user && isStaff(user)
+          ? {
+              name: user.name,
+              email: user.email,
+              phone: user.phone,
+              address: user.address,
+              password: '',
+              role: user.role,
+            }
+          : EMPTY_FORM,
+      );
+      setShowErrors(false);
+      setStaffOpen(true);
+    };
+
+    if (selected) {
+      // Editing is launched from UserSheet, so wait for that native modal to
+      // finish closing before opening the staff form BottomSheet.
+      setTimeout(open, 300);
+    } else {
+      // "Add staff" comes directly from the Users screen and needs no delay.
+      open();
+    }
   }
 
   // The same rules as the server's staff schema, checked here first so the
@@ -353,14 +380,23 @@ export function AdminUsersScreen({ route }: AdminTabProps<'AdminUsers'>) {
   const errors = {
     name: form.name.trim().length < 2 ? t('auth.nameShort') : undefined,
     email: EMAIL.test(form.email.trim()) ? undefined : t('auth.emailInvalid'),
-    phone: /^\d{10}$/.test(phone) ? undefined : t('admin.phone10'),
+    phone: /^07[01245678]\d{7}$/.test(phone) ? undefined : t('admin.phone10'),
     address: form.address.trim().length < 5 ? t('auth.addressShort') : undefined,
     password: !editing && form.password.length < 8 ? t('auth.passwordShort') : undefined,
   };
   const formValid = !Object.values(errors).some(Boolean);
 
+  const unchanged =
+    !!editing &&
+    form.name.trim() === editing.name.trim() &&
+    form.email.trim().toLowerCase() === editing.email.trim().toLowerCase() &&
+    phone === editing.phone.replace(/\s/g, '') &&
+    form.address.trim() === editing.address.trim();
+
   async function saveStaff() {
     setShowErrors(true);
+    if (saving || unchanged) return;
+
     if (!formValid) {
       haptics.error();
       return;
@@ -532,12 +568,14 @@ export function AdminUsersScreen({ route }: AdminTabProps<'AdminUsers'>) {
               label={t('common.cancel')}
               variant="secondary"
               onPress={() => setStaffOpen(false)}
+              disabled={saving}
               style={styles.flex}
             />
             <Button
               label={editing ? t('common.save') : t('admin.addStaff')}
               onPress={() => void saveStaff()}
               loading={saving}
+              disabled={saving || (!!editing && unchanged)}
               style={styles.flex}
             />
           </View>
