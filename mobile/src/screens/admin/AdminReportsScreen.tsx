@@ -1,5 +1,12 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { RefreshControl, View } from 'react-native';
+import {
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  Pressable,
+  RefreshControl,
+  View,
+} from 'react-native';
 import Animated from 'react-native-reanimated';
 import { useFocusEffect } from '@react-navigation/native';
 import * as Sharing from 'expo-sharing';
@@ -256,14 +263,25 @@ export function AdminReportsScreen(_: AdminTabProps<'AdminReports'>) {
   };
 
   async function finalize(report: AdminReport) {
+    setOpen(null);
+
+    // ReportSheet is a native Modal-backed BottomSheet. Let it finish closing
+    // before presenting the confirmation sheet to avoid overlapping modals.
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, 300);
+    });
+
     const ok = await confirm({
       title: t('admin.finalizeTitle'),
       message: t('admin.finalizeBody'),
       confirmLabel: t('admin.finalize'),
       icon: 'lock-closed-outline',
     });
+
     if (!ok) return;
+
     setBusy('finalize');
+
     try {
       put(await finalizeReport(report.reportId));
       haptics.success();
@@ -439,11 +457,24 @@ export function AdminReportsScreen(_: AdminTabProps<'AdminReports'>) {
         onClose={() => setOpen(null)}
         onRename={(r) => {
           setOpen(null);
-          setRenaming(r);
+
+          setTimeout(() => {
+            setRenaming(r);
+          }, 300);
         }}
         onFinalize={(r) => void finalize(r)}
         onDownload={(r) => void download(r)}
         onDelete={(r) => void remove(r)}
+      />
+
+      <RenameReportModal
+        report={renaming}
+        onClose={() => setRenaming(null)}
+        onRenamed={(r) => {
+          put(r);
+          setRenaming(null);
+          toast.show({ type: 'success', title: t('admin.renamedToast') });
+        }}
       />
 
       <CreateSheet
@@ -455,17 +486,11 @@ export function AdminReportsScreen(_: AdminTabProps<'AdminReports'>) {
           setActive((list) => [r, ...list]);
           haptics.success();
           toast.show({ type: 'success', title: t('admin.generatedToast') });
-          setOpen(r);
-        }}
-      />
 
-      <RenameSheet
-        report={renaming}
-        onClose={() => setRenaming(null)}
-        onRenamed={(r) => {
-          put(r);
-          setRenaming(null);
-          toast.show({ type: 'success', title: t('admin.renamedToast') });
+          // Let CreateSheet fully dismiss before opening the generated report.
+          setTimeout(() => {
+            setOpen(r);
+          }, 300);
         }}
       />
     </Screen>
@@ -574,11 +599,12 @@ function ReportSheet({
   const { t } = useI18n();
   const f = useFormat();
 
-  // Keep the content while the sheet slides away.
   const [shown, setShown] = useState<AdminReport | null>(report);
+
   useEffect(() => {
     if (report) setShown(report);
   }, [report]);
+
   const r = report ?? shown;
   if (!r) return null;
 
@@ -616,6 +642,7 @@ function ReportSheet({
               style={styles.flex}
               disabled={!!busy}
             />
+
             <Button
               label={t('admin.finalize')}
               icon="lock-closed-outline"
@@ -633,6 +660,7 @@ function ReportSheet({
           label={f.status('report', r.status)}
           tone={finalised ? 'safe' : 'neutral'}
         />
+
         <AppText variant="caption" color="textSecondary">
           {finalised && r.finalizedAt
             ? t('admin.finalisedOn', { when: f.dateMedium(r.finalizedAt) })
@@ -650,6 +678,7 @@ function ReportSheet({
       ) : null}
 
       <SectionHeader title={t('admin.preview')} />
+
       {groups.map((g, gi) => (
         <View key={gi} style={gi > 0 ? styles.groupGap : undefined}>
           {g.title ? (
@@ -657,12 +686,14 @@ function ReportSheet({
               {g.title}
             </AppText>
           ) : null}
+
           {g.rows.map((row) => (
             <View key={row.label} style={styles.bRow}>
               <View style={styles.bLabel}>
                 <AppText variant="secondary">{row.label}</AppText>
                 <AppText variant="secondaryStrong">{f.number(row.value)}</AppText>
               </View>
+
               <ProgressBar
                 value={row.value / max}
                 tone={info.tone}
@@ -692,6 +723,119 @@ function ReportSheet({
         style={styles.deleteBtn}
       />
     </BottomSheet>
+  );
+}
+
+function RenameReportModal({
+  report,
+  onClose,
+  onRenamed,
+}: {
+  report: AdminReport | null;
+  onClose: () => void;
+  onRenamed: (r: AdminReport) => void;
+}) {
+  const styles = useStyles();
+  const { t } = useI18n();
+  const toast = useToast();
+
+  const [title, setTitle] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [showErrors, setShowErrors] = useState(false);
+
+  useEffect(() => {
+    if (report) {
+      setTitle(report.title);
+      setShowErrors(false);
+      setSaving(false);
+    }
+  }, [report]);
+
+  if (!report) return null;
+
+  const trimmedTitle = title.trim();
+  const titleError = trimmedTitle.length < 2 ? t('admin.titleShort') : undefined;
+  const unchanged = trimmedTitle === report.title.trim();
+  const invalid = !!titleError || unchanged;
+
+  async function save() {
+    setShowErrors(true);
+
+    if (titleError || unchanged || saving) {
+      if (titleError) haptics.error();
+      return;
+    }
+
+    setSaving(true);
+
+    try {
+      const reportId = report?.reportId;
+
+      if (!reportId) return;
+
+      const updated = await renameReport(reportId, trimmedTitle);
+      haptics.success();
+      onRenamed(updated);
+    } catch (err) {
+      toast.show({
+        type: 'error',
+        title: describeError(err, t).message,
+      });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Modal
+      visible
+      transparent
+      animationType="fade"
+      presentationStyle="overFullScreen"
+      onRequestClose={() => {
+        if (!saving) onClose();
+      }}
+    >
+      <KeyboardAvoidingView
+        style={styles.renameModalFill}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
+        <Pressable style={styles.renameBackdrop} onPress={saving ? undefined : onClose} />
+
+        <View style={styles.renameCard}>
+          <AppText variant="headline">{t('admin.renameTitle')}</AppText>
+
+          <TextField
+            label={t('admin.reportTitle')}
+            value={title}
+            onChangeText={setTitle}
+            error={showErrors ? titleError : undefined}
+            maxLength={150}
+            clearable
+            onSubmitEditing={() => void save()}
+            returnKeyType="done"
+          />
+
+          <View style={styles.row}>
+            <Button
+              label={t('common.cancel')}
+              variant="secondary"
+              onPress={onClose}
+              disabled={saving}
+              style={styles.flex}
+            />
+
+            <Button
+              label={t('common.save')}
+              onPress={() => void save()}
+              loading={saving}
+              disabled={invalid}
+              style={styles.flex}
+            />
+          </View>
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
   );
 }
 
@@ -727,12 +871,30 @@ function CreateSheet({
   const titleError = title.trim().length < 2 ? t('admin.titleShort') : undefined;
   const now = new Date();
 
+  const validRange =
+    !Number.isNaN(range[0].getTime()) &&
+    !Number.isNaN(range[1].getTime()) &&
+    startOfDay(range[0]).getTime() <= endOfDay(range[1]).getTime() &&
+    startOfDay(range[1]).getTime() <= endOfDay(now).getTime();
+
   async function submit() {
+    if (saving) return;
+
     setShowErrors(true);
-    if (titleError) {
+
+    if (titleError || !validRange) {
       haptics.error();
+
+      if (!validRange) {
+        toast.show({
+          type: 'error',
+          title: 'Please select a valid report date range.',
+        });
+      }
+
       return;
     }
+
     setSaving(true);
     try {
       const report = await createReport({
@@ -767,6 +929,7 @@ function CreateSheet({
           icon="sparkles-outline"
           onPress={() => void submit()}
           loading={saving}
+          disabled={!!titleError || !validRange || saving}
         />
       }
     >
@@ -839,68 +1002,6 @@ function CreateSheet({
   );
 }
 
-function RenameSheet({
-  report,
-  onClose,
-  onRenamed,
-}: {
-  report: AdminReport | null;
-  onClose: () => void;
-  onRenamed: (r: AdminReport) => void;
-}) {
-  const { t } = useI18n();
-  const toast = useToast();
-  const [title, setTitle] = useState('');
-  const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    if (report) setTitle(report.title);
-  }, [report]);
-
-  const error = title.trim().length < 2 ? t('admin.titleShort') : undefined;
-
-  async function save() {
-    if (!report || error) return;
-    setSaving(true);
-    try {
-      onRenamed(await renameReport(report.reportId, title.trim()));
-    } catch (err) {
-      toast.show({ type: 'error', title: describeError(err, t).message });
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <BottomSheet
-      visible={!!report}
-      onClose={onClose}
-      dismissible={!saving}
-      title={t('admin.renameTitle')}
-      footer={
-        <Button
-          label={t('common.save')}
-          onPress={() => void save()}
-          loading={saving}
-          disabled={!!error || title.trim() === report?.title}
-        />
-      }
-    >
-      <TextField
-        label={t('admin.reportTitle')}
-        value={title}
-        onChangeText={setTitle}
-        error={error}
-        maxLength={150}
-        autoFocus
-        clearable
-        onSubmitEditing={() => void save()}
-        returnKeyType="done"
-      />
-    </BottomSheet>
-  );
-}
-
 const useStyles = makeStyles((t) => ({
   content: {
     paddingHorizontal: t.layout.screenPadding,
@@ -945,4 +1046,27 @@ const useStyles = makeStyles((t) => ({
   fieldLabel: { marginBottom: t.spacing.sm },
   typeGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: t.spacing.sm },
   presets: { marginTop: t.spacing.md + 4, marginBottom: t.spacing.md },
+
+  renameModalFill: {
+    flex: 1,
+    justifyContent: 'center',
+    paddingHorizontal: t.layout.screenPadding,
+  },
+
+  renameBackdrop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: t.colors.scrim,
+  },
+
+  renameCard: {
+    backgroundColor: t.colors.surfaceElevated,
+    borderRadius: t.radius.xl,
+    padding: t.layout.screenPadding,
+    gap: t.spacing.md,
+    ...t.elevation(3),
+  },
 }));
