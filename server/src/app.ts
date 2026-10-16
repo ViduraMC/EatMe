@@ -7,16 +7,36 @@ import { env, isProduction } from './config/env';
 
 export const app = express();
 
+app.disable('x-powered-by');
+
+// In production the API sits behind the host's HTTPS proxy (Render). Trusting
+// one hop makes req.ip the phone's address, which the rate limiter keys on.
+if (isProduction) app.set('trust proxy', 1);
+
+// Security headers. This is a JSON API used by a native app, so nothing it
+// returns should ever be framed, sniffed or run as a page.
+app.use((_req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Referrer-Policy', 'no-referrer');
+  res.setHeader('Content-Security-Policy', "default-src 'none'; frame-ancestors 'none'");
+  if (isProduction) {
+    res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  }
+  next();
+});
+
 /*
- * CORS is wide open by default during development. The app is served from Expo
- * Go on a phone, so there is no fixed origin to allow-list. CORS_ORIGIN can be
- * narrowed later without touching this file.
+ * CORS only matters to browsers; the Android app does not send an Origin. In
+ * development it stays open for Expo web. In production "*" means no browser
+ * origin is allowed at all, and a real list can still be set in CORS_ORIGIN.
  */
 app.use(
   cors({
     origin:
-      env.CORS_ORIGIN === '*' ? true : env.CORS_ORIGIN.split(',').map((o) => o.trim()),
-    credentials: true,
+      env.CORS_ORIGIN === '*'
+        ? !isProduction
+        : env.CORS_ORIGIN.split(',').map((o) => o.trim()),
   }),
 );
 

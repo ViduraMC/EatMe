@@ -1,6 +1,6 @@
 import os from 'node:os';
 import { app } from './app';
-import { env } from './config/env';
+import { env, isProduction } from './config/env';
 import { prisma } from './config/prisma';
 
 /**
@@ -60,8 +60,10 @@ async function start(): Promise<void> {
   // 0.0.0.0, not localhost. Binding to localhost would make the API reachable
   // from the laptop only, and every phone on the network would time out.
   const server = app.listen(env.PORT, '0.0.0.0', () => {
+    console.log(`\n  EatMe API running in ${env.NODE_ENV} mode on port ${env.PORT}`);
+    // The LAN hints below are for laptops on Wi-Fi, not for a hosted server.
+    if (isProduction) return;
     const lan = findLanAddress();
-    console.log(`\n  EatMe API running in ${env.NODE_ENV} mode`);
     console.log(`  local:   http://localhost:${env.PORT}/api/health`);
     if (lan) {
       console.log(`  network: http://${lan}:${env.PORT}/api/health`);

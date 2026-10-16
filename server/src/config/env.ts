@@ -34,6 +34,18 @@ if (!parsed.success) {
   process.exit(1);
 }
 
+// The example secrets are public on GitHub. A server running in production with
+// one of them would let anyone mint a valid admin token, so refuse to start.
+if (
+  parsed.data.NODE_ENV === 'production' &&
+  /change_me|example|secret_here/i.test(parsed.data.JWT_SECRET)
+) {
+  console.error(
+    '\nJWT_SECRET is still the placeholder from .env.example. Set a random one.\n',
+  );
+  process.exit(1);
+}
+
 export const env = parsed.data;
 
 export const isProduction = env.NODE_ENV === 'production';

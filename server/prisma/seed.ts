@@ -155,6 +155,13 @@ interface SeedItem {
 }
 
 async function main(): Promise<void> {
+  // The first thing this does is delete every row. Never against a live database.
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error(
+      'Refusing to seed: NODE_ENV is production and seeding wipes all data.',
+    );
+  }
+
   console.log('Clearing existing data...');
   await clearDatabase();
 

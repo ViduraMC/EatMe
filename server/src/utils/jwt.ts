@@ -23,5 +23,6 @@ export function signToken(payload: JwtPayload): string {
 
 /** Throws if the token is missing, malformed, tampered with or expired. */
 export function verifyToken(token: string): JwtPayload {
-  return jwt.verify(token, env.JWT_SECRET) as JwtPayload;
+  // Pin the algorithm so a token cannot ask to be checked some other way.
+  return jwt.verify(token, env.JWT_SECRET, { algorithms: ['HS256'] }) as JwtPayload;
 }
