@@ -8,7 +8,7 @@ What this branch changes, and why:
 | Area             | Change                                                                                                                                                                                                                                                                          |
 | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Account deletion | Donors and recipients can delete their account in **Profile → Delete account** (`DELETE /api/auth/me`, password required). Google Play requires this for any app with in-app sign-up. Personal details are wiped and the account closed; delivery history is kept without them. |
-| Brute force      | Sign in, sign up and account deletion are rate limited per IP (429 after 20 / 10 tries in 15 minutes).                                                                                                                                                                          |
+| Brute force      | Rate limits on sign in (30 per IP and 10 per account in 15 minutes, so faking IP addresses does not help), sign up (10 per IP) and account deletion (5 per user). Malformed or oversized request bodies get 400 / 413.                                                          |
 | HTTP hardening   | Security headers on every response, HSTS in production, `X-Powered-By` removed, browsers blocked by CORS in production (the Android app does not need CORS).                                                                                                                    |
 | Tokens           | JWT verification pinned to HS256. The server refuses to start in production with the example `JWT_SECRET`.                                                                                                                                                                      |
 | Data safety      | `npm run db:seed` refuses to run in production (it deletes every row).                                                                                                                                                                                                          |
@@ -71,6 +71,18 @@ The tables are created automatically on the first deploy.
    `https://<your-service>.onrender.com/api/health`. It must return
    `"status":"ok"`. Note this URL: the app's API address is that URL plus
    `/api`, for example `https://eatme-api.onrender.com/api`.
+5. **Check the proxy setting** (the sign-in rate limit depends on it). Render
+   does not publish how many proxies sit in front of the app.
+   - Open the health URL on your phone using mobile data and look at
+     `clientIp`. Compare it with your phone's public IP (search "what is my
+     IP" on the same phone).
+   - If `clientIp` is a different address (Render's or Cloudflare's), go to
+     Render → `eatme-api` → **Environment**, raise `TRUST_PROXY_HOPS` by 1,
+     save (it redeploys), and check again until they match.
+   - Then confirm it cannot be faked: run
+     `curl -H "X-Forwarded-For: 1.2.3.4" https://<your-service>.onrender.com/api/health`.
+     `clientIp` must **not** be `1.2.3.4`. If it is, lower `TRUST_PROXY_HOPS`
+     by 1.
 
 ## 4. Create the first administrator
 
