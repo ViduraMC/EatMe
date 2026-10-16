@@ -9,7 +9,7 @@ export const app = express();
 
 app.disable('x-powered-by');
 
-// In production the API sits behind the host's HTTPS proxies (Render). Trusting
+// In production the API sits behind Google Cloud Run's HTTPS front end. Trusting
 // exactly that many hops makes req.ip the phone's address, which the rate
 // limiter keys on. Too few and every user shares one limit; too many and a
 // client can fake its address with X-Forwarded-For.

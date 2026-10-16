@@ -1,0 +1,8 @@
+# Keep secrets and local build output out of the image and out of Cloud Build.
+node_modules
+dist
+.env
+.env.*
+!.env.example
+!.env.production.example
+*.log
