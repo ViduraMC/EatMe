@@ -19,6 +19,14 @@ if (!baseURL) {
   );
 }
 
+if (!__DEV__ && !baseURL.startsWith('https://')) {
+  // A store build talking plain HTTP would send passwords and tokens in the
+  // clear, and Android blocks it anyway. Fail at startup rather than ship it.
+  throw new Error(
+    `Release builds need an https:// EXPO_PUBLIC_API_URL, got "${baseURL}". See RELEASE.md.`,
+  );
+}
+
 if (baseURL.includes('localhost') || baseURL.includes('127.0.0.1')) {
   // Not fatal on an emulator, but on a real phone "localhost" is the phone.
   console.warn(
