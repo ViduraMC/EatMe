@@ -32,6 +32,18 @@ export function errorHandler(
     return;
   }
 
+  // express.json() rejects a body that is not valid JSON, or over the 1 MB
+  // limit. That is the client's mistake, not a server failure.
+  const bodyError = (err as { type?: string } | null)?.type;
+  if (bodyError === 'entity.parse.failed') {
+    sendError(res, 400, 'The request body is not valid JSON');
+    return;
+  }
+  if (bodyError === 'entity.too.large') {
+    sendError(res, 413, 'The request body is too large');
+    return;
+  }
+
   /*
    * A controller called schema.parse() directly instead of using the
    * validateBody middleware, and the input was invalid.
