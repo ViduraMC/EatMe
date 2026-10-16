@@ -22,3 +22,8 @@ export async function meRequest(): Promise<User> {
   const { data } = await api.get<ApiSuccess<{ user: User }>>('/auth/me');
   return data.data.user;
 }
+
+/** Closes the signed-in account for good. The server asks for the password again. */
+export async function deleteAccountRequest(password: string): Promise<void> {
+  await api.delete('/auth/me', { data: { password } });
+}

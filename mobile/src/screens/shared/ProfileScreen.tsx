@@ -15,11 +15,15 @@ import {
   Screen,
   SectionHeader,
   SegmentedControl,
+  TextField,
   TopBar,
   useConfirm,
   useScrollY,
+  useToast,
 } from '../../components';
+import { deleteAccountRequest } from '../../api/auth.api';
 import { useAuth } from '../../context/AuthContext';
+import { describeError } from '../../i18n/errors';
 import { useOnboarding } from '../../context/OnboardingContext';
 import { LANGUAGES, translate, useI18n, type Language } from '../../i18n';
 import { makeStyles, useThemePreference, type ThemePreference } from '../../theme';
@@ -54,8 +58,32 @@ export function ProfileScreen() {
   const { scrollY, onScroll } = useScrollY();
   const reduced = useReducedMotion();
   const [aboutOpen, setAboutOpen] = useState(false);
+  const toast = useToast();
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deletePassword, setDeletePassword] = useState('');
+  const [deleteError, setDeleteError] = useState<string | undefined>();
+  const [deleting, setDeleting] = useState(false);
 
   if (!user) return null;
+
+  // Only people who sign themselves up can close their own account (a Google
+  // Play rule). Staff accounts are removed by an administrator.
+  const canDeleteAccount = user.role === 'donor' || user.role === 'recipient';
+
+  async function deleteAccount() {
+    setDeleting(true);
+    setDeleteError(undefined);
+    try {
+      await deleteAccountRequest(deletePassword);
+      setDeleteOpen(false);
+      toast.show({ type: 'success', title: t('settings.deleteAccountDone') });
+      await logout();
+    } catch (err) {
+      setDeleteError(describeError(err, t).message);
+    } finally {
+      setDeleting(false);
+    }
+  }
 
   const displayName = user.organisationName ?? user.name;
 
@@ -226,6 +254,19 @@ export function ProfileScreen() {
             onPress={() => void signOut()}
             style={styles.signOut}
           />
+          {canDeleteAccount ? (
+            <Button
+              label={t('settings.deleteAccount')}
+              variant="dangerGhost"
+              icon="trash-outline"
+              onPress={() => {
+                setDeletePassword('');
+                setDeleteError(undefined);
+                setDeleteOpen(true);
+              }}
+              style={styles.deleteAccount}
+            />
+          ) : null}
           <AppText variant="caption" color="textTertiary" align="center">
             {t('settings.version', { version: APP_VERSION })}
           </AppText>
@@ -241,6 +282,35 @@ export function ProfileScreen() {
           <AppText variant="caption" color="textTertiary">
             {t('settings.version', { version: APP_VERSION })}
           </AppText>
+        </View>
+      </BottomSheet>
+
+      <BottomSheet
+        visible={deleteOpen}
+        onClose={() => (deleting ? undefined : setDeleteOpen(false))}
+        title={t('settings.deleteAccountTitle')}
+      >
+        <View style={styles.deleteSheet}>
+          <AppText variant="body" color="textSecondary">
+            {t('settings.deleteAccountBody')}
+          </AppText>
+          <TextField
+            label={t('settings.deleteAccountPassword')}
+            value={deletePassword}
+            onChangeText={setDeletePassword}
+            secure
+            autoCapitalize="none"
+            autoComplete="current-password"
+            error={deleteError}
+          />
+          <Button
+            label={t('settings.deleteAccountConfirm')}
+            variant="danger"
+            icon="trash-outline"
+            onPress={() => void deleteAccount()}
+            disabled={!deletePassword || deleting}
+            loading={deleting}
+          />
         </View>
       </BottomSheet>
     </Screen>
@@ -265,6 +335,8 @@ const useStyles = makeStyles((t) => ({
   group: { paddingVertical: t.spacing.xs },
   prefBlock: { paddingVertical: t.spacing.md, gap: t.spacing.sm + 4 },
   prefHead: { gap: 2 },
-  signOut: { marginTop: t.spacing.xl, marginBottom: t.spacing.md },
+  signOut: { marginTop: t.spacing.xl, marginBottom: t.spacing.sm },
+  deleteAccount: { marginBottom: t.spacing.md },
+  deleteSheet: { gap: t.spacing.md, paddingBottom: t.spacing.md },
   about: { alignItems: 'center', gap: t.spacing.md, paddingVertical: t.spacing.md },
 }));

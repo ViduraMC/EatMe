@@ -229,6 +229,13 @@ export const si: Widen<Dictionary> = {
     signOut: 'ඉවත් වන්න',
     signOutConfirmTitle: 'ඉවත් වෙනවාද?',
     signOutConfirmBody: 'නැවත පිවිසීමට ඔබේ විද්‍යුත් තැපෑල සහ මුරපදය අවශ්‍ය වේ.',
+    deleteAccount: 'ගිණුම මකන්න',
+    deleteAccountTitle: 'ඔබේ ගිණුම මකන්නද?',
+    deleteAccountBody:
+      'ඔබේ නම, විද්‍යුත් තැපෑල, දුරකථන අංකය සහ ලිපිනය ඉවත් කර ඔබව ගිණුමෙන් ඉවත් කෙරේ. විවෘත ලැයිස්තු සහ පොරොත්තු ඉල්ලීම් අවලංගු වේ. මෙය ආපසු හැරවිය නොහැක.',
+    deleteAccountPassword: 'තහවුරු කිරීමට ඔබේ මුරපදය ඇතුළත් කරන්න',
+    deleteAccountConfirm: 'මගේ ගිණුම මකන්න',
+    deleteAccountDone: 'ඔබේ ගිණුම මකා දමන ලදී.',
     replayIntro: 'හැඳින්වීම නැවත බලන්න',
     available: 'බෙදාහැරීම් සඳහා සූදානම්',
     unavailable: 'බෙදාහැරීම් භාර නොගනී',

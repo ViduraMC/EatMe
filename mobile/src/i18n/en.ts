@@ -230,6 +230,13 @@ export const en = {
     signOut: 'Sign out',
     signOutConfirmTitle: 'Sign out?',
     signOutConfirmBody: 'You will need your email and password to sign back in.',
+    deleteAccount: 'Delete account',
+    deleteAccountTitle: 'Delete your account?',
+    deleteAccountBody:
+      'Your name, email, phone number and address are removed and you are signed out. Open listings and pending requests are cancelled. This cannot be undone.',
+    deleteAccountPassword: 'Enter your password to confirm',
+    deleteAccountConfirm: 'Delete my account',
+    deleteAccountDone: 'Your account has been deleted.',
     replayIntro: 'Replay the introduction',
     available: 'Available for deliveries',
     unavailable: 'Not taking deliveries',
