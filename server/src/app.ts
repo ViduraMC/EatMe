@@ -9,9 +9,11 @@ export const app = express();
 
 app.disable('x-powered-by');
 
-// In production the API sits behind the host's HTTPS proxy (Render). Trusting
-// one hop makes req.ip the phone's address, which the rate limiter keys on.
-if (isProduction) app.set('trust proxy', 1);
+// In production the API sits behind the host's HTTPS proxies (Render). Trusting
+// exactly that many hops makes req.ip the phone's address, which the rate
+// limiter keys on. Too few and every user shares one limit; too many and a
+// client can fake its address with X-Forwarded-For.
+if (isProduction) app.set('trust proxy', env.TRUST_PROXY_HOPS);
 
 // Security headers. This is a JSON API used by a native app, so nothing it
 // returns should ever be framed, sniffed or run as a page.

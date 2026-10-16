@@ -16,9 +16,12 @@ const router = Router();
  * phone's browser to prove the device can reach the laptop over the LAN, before
  * blaming their code for a connection problem.
  */
-router.get('/health', (_req, res) => {
+router.get('/health', (req, res) => {
   sendSuccess(res, {
     status: 'ok',
+    // The caller's own address as the server sees it. Used once after a deploy
+    // to set TRUST_PROXY_HOPS correctly; it only ever shows you your own IP.
+    clientIp: req.ip,
     timestamp: new Date().toISOString(),
     uptimeSeconds: Math.round(process.uptime()),
   });

@@ -22,6 +22,9 @@ const envSchema = z.object({
     ),
   JWT_EXPIRES_IN: z.string().default('7d'),
   CORS_ORIGIN: z.string().default('*'),
+  // How many proxies sit between the internet and this server. See RELEASE.md
+  // for how to check the value on the host.
+  TRUST_PROXY_HOPS: z.coerce.number().int().min(0).max(10).default(1),
 });
 
 const parsed = envSchema.safeParse(process.env);

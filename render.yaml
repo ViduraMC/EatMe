@@ -32,3 +32,7 @@ services:
         value: 7d
       - key: CORS_ORIGIN
         value: '*'
+      # Proxies between the internet and the app. Check it after the first
+      # deploy (RELEASE.md step 3) and adjust in the dashboard if needed.
+      - key: TRUST_PROXY_HOPS
+        value: '1'

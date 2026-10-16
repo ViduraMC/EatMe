@@ -15,9 +15,27 @@ import { asyncHandler } from '../utils/asyncHandler';
 
 const router = Router();
 
+const WINDOW = 15 * 60 * 1000;
+
 // Per IP, per 15 minutes. Generous for a person, too low for a password script.
-const loginLimit = rateLimit({ windowMs: 15 * 60 * 1000, max: 20 });
-const registerLimit = rateLimit({ windowMs: 15 * 60 * 1000, max: 10 });
+const loginIpLimit = rateLimit({ windowMs: WINDOW, max: 30 });
+const registerLimit = rateLimit({ windowMs: WINDOW, max: 10 });
+// Per account being signed in to. Stops a script that rotates IP addresses (or
+// fakes X-Forwarded-For) from guessing one person's password indefinitely.
+const loginAccountLimit = rateLimit({
+  windowMs: WINDOW,
+  max: 10,
+  key: (req) =>
+    typeof req.body?.email === 'string'
+      ? `email:${req.body.email.trim().toLowerCase()}`
+      : undefined,
+});
+// Per signed-in user: deleting an account re-checks the password.
+const deleteLimit = rateLimit({
+  windowMs: WINDOW,
+  max: 5,
+  key: (req) => (req.user ? `user:${req.user.userId}` : undefined),
+});
 
 router.post(
   '/register',
@@ -25,13 +43,18 @@ router.post(
   validateBody(registerSchema),
   asyncHandler(register),
 );
-router.post('/login', loginLimit, validateBody(loginSchema), asyncHandler(login));
+router.post(
+  '/login',
+  loginIpLimit,
+  loginAccountLimit,
+  validateBody(loginSchema),
+  asyncHandler(login),
+);
 router.get('/me', authenticate, asyncHandler(me));
-// Same limit as login: it checks a password too.
 router.delete(
   '/me',
-  loginLimit,
   authenticate,
+  deleteLimit,
   validateBody(deleteAccountSchema),
   asyncHandler(deleteAccount),
 );
