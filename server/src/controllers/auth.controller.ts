@@ -1,4 +1,5 @@
 import type { Request, Response } from 'express';
+import { randomBytes } from 'node:crypto';
 import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import { prisma } from '../config/prisma';
@@ -115,6 +116,80 @@ export async function login(req: Request, res: Response): Promise<void> {
   const { passwordHash: _passwordHash, ...safeUser } = user;
 
   sendSuccess(res, { user: safeUser, token });
+}
+
+export const deleteAccountSchema = z.object({
+  password: z.string().min(1, 'Enter your password to confirm'),
+});
+
+/**
+ * DELETE /api/auth/me
+ *
+ * Google Play requires that anyone who can sign up in the app can also delete
+ * their account from inside it. Donors and recipients sign themselves up, so
+ * they get this; staff accounts (coordinator, driver, admin) are created and
+ * removed by an administrator.
+ *
+ * The row is anonymised rather than deleted. Listings, requests and deliveries
+ * point at it, and the admin reports are built on that history, so every
+ * personal detail is wiped and the account is closed, but the row stays.
+ */
+export async function deleteAccount(req: Request, res: Response): Promise<void> {
+  const { password } = req.body as z.infer<typeof deleteAccountSchema>;
+  const userId = req.user!.userId;
+
+  if (req.user!.role !== 'donor' && req.user!.role !== 'recipient') {
+    throw ApiError.forbidden('Staff accounts are removed by an administrator.');
+  }
+
+  const account = await prisma.user.findUniqueOrThrow({ where: { userId } });
+  if (!(await bcrypt.compare(password, account.passwordHash))) {
+    throw ApiError.badRequest('That password is not correct');
+  }
+
+  // A driver may already be on the way. Closing the account now would strand
+  // that delivery, so the person finishes or cancels it first.
+  const activeDelivery = await prisma.deliveryAssignment.findFirst({
+    where: {
+      status: { in: ['pending_driver', 'accepted', 'in_transit'] },
+      request: { OR: [{ recipientId: userId }, { listing: { donorId: userId } }] },
+    },
+    select: { assignmentId: true },
+  });
+  if (activeDelivery) {
+    throw ApiError.conflict(
+      'You have a delivery in progress. Finish it before deleting your account.',
+    );
+  }
+
+  // Unguessable, so the closed account can never be signed in to again.
+  const unusableHash = await bcrypt.hash(randomBytes(32).toString('hex'), BCRYPT_ROUNDS);
+
+  await prisma.$transaction([
+    prisma.donationListing.updateMany({
+      where: { donorId: userId, status: { in: ['open', 'partially_claimed'] } },
+      data: { status: 'cancelled' },
+    }),
+    prisma.donationRequest.updateMany({
+      where: { recipientId: userId, status: 'pending' },
+      data: { status: 'cancelled' },
+    }),
+    prisma.user.update({
+      where: { userId },
+      data: {
+        name: 'Deleted user',
+        email: `deleted-${userId}@deleted.invalid`,
+        passwordHash: unusableHash,
+        phone: '',
+        address: '',
+        organisationName: null,
+        isAvailable: false,
+        status: 'inactive',
+      },
+    }),
+  ]);
+
+  sendSuccess(res, { deleted: true });
 }
 
 /** GET /api/auth/me */
