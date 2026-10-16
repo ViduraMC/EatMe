@@ -8,6 +8,7 @@
     "dev": "tsx watch src/server.ts",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/server.js",
+    "admin:create": "node dist/scripts/createAdmin.js",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.seed.json",
     "lint": "prettier --check \"src/**/*.ts\" \"prisma/**/*.ts\" && npm run typecheck",
     "db:generate": "prisma generate",
@@ -43,5 +44,8 @@
     "prisma": "^6.2.1",
     "tsx": "^4.19.2",
     "typescript": "^5.7.3"
+  },
+  "engines": {
+    "node": ">=20"
   }
 }
