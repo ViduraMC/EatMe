@@ -1,18 +1,19 @@
+import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 import { z } from 'zod';
-import { prisma } from '../config/prisma';
 
 /**
  * Creates the first administrator on a fresh production database.
  *
  * Admins cannot sign up through the app (see registerSchema), and the seed
  * script refuses to run in production, so this is the only way in. Run it once
- * from the host's shell, then create every other staff account in the app:
+ * from your laptop with the production DATABASE_URL set (RELEASE.md step 4),
+ * then create every other staff account in the app.
  *
- *   ADMIN_NAME="..." ADMIN_EMAIL="..." ADMIN_PHONE="..." ADMIN_PASSWORD="..." npm run admin:create
- *
- * The values come from the environment rather than the command line so the
- * password does not end up in shell history.
+ * It uses its own Prisma client rather than config/prisma, so only
+ * DATABASE_URL is needed, not the server's JWT_SECRET. The values come from
+ * the environment rather than the command line so the password does not end
+ * up in shell history.
  */
 const adminSchema = z.object({
   ADMIN_NAME: z.string().trim().min(2),
@@ -23,6 +24,8 @@ const adminSchema = z.object({
     .min(12, 'Use at least 12 characters for the admin password')
     .max(72),
 });
+
+const prisma = new PrismaClient();
 
 async function main(): Promise<void> {
   const input = adminSchema.parse(process.env);
