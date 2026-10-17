@@ -1,0 +1,45 @@
+{
+  "expo": {
+    "name": "EatMe",
+    "slug": "eatme",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "lk.eatme.app"
+    },
+    "android": {
+      "package": "lk.eatme.app",
+      "adaptiveIcon": {
+        "backgroundColor": "#B84A26",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-secure-store",
+      "expo-status-bar",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 140,
+          "resizeMode": "contain",
+          "backgroundColor": "#B84A26",
+          "dark": {
+            "image": "./assets/splash-icon.png",
+            "backgroundColor": "#8E3A1E"
+          }
+        }
+      ],
+      "expo-font"
+    ]
+  }
+}

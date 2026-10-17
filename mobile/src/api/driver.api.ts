@@ -1,0 +1,94 @@
+import { api } from './client';
+import type {
+  ApiSuccess,
+  AssignmentStatus,
+  AvailabilityPayload,
+  DriverAssignment,
+  DriverStats,
+} from '../types';
+
+export async function setAvailabilityRequest(
+  isAvailable: boolean,
+): Promise<AvailabilityPayload> {
+  const { data } = await api.patch<ApiSuccess<AvailabilityPayload>>(
+    '/driver/availability',
+    { isAvailable },
+  );
+
+  return data.data;
+}
+
+export async function fetchAssignments(
+  status?: AssignmentStatus,
+): Promise<DriverAssignment[]> {
+  const { data } = await api.get<ApiSuccess<{ assignments: DriverAssignment[] }>>(
+    '/driver/assignments',
+    { params: status ? { status } : undefined },
+  );
+
+  return data.data.assignments;
+}
+
+export async function fetchAssignment(id: number): Promise<DriverAssignment> {
+  const { data } = await api.get<ApiSuccess<{ assignment: DriverAssignment }>>(
+    `/driver/assignments/${id}`,
+  );
+
+  return data.data.assignment;
+}
+
+/**
+ * Today's assignments and this week's completed deliveries, for the
+ * dashboard tiles. The endpoint existed but was never called, so the tiles
+ * always showed zero.
+ */
+export async function fetchDriverStats(): Promise<DriverStats> {
+  const { data } = await api.get<ApiSuccess<DriverStats>>('/driver/stats');
+  return data.data;
+}
+
+//Sprint 2
+export async function acceptAssignmentRequest(id: number): Promise<DriverAssignment> {
+  const { data } = await api.put<ApiSuccess<{ assignment: DriverAssignment }>>(
+    `/driver/assignments/${id}/accept`,
+  );
+
+  return data.data.assignment;
+}
+
+export async function declineAssignmentRequest(
+  id: number,
+  declineReason: string,
+): Promise<DriverAssignment> {
+  const { data } = await api.put<ApiSuccess<{ assignment: DriverAssignment }>>(
+    `/driver/assignments/${id}/decline`,
+    { declineReason },
+  );
+
+  return data.data.assignment;
+}
+
+// US-DR03: Confirm Pickup and Confirm Drop Off (driver side).
+export async function confirmPickupRequest(
+  id: number,
+  notes?: string | null,
+): Promise<DriverAssignment> {
+  const { data } = await api.put<ApiSuccess<{ assignment: DriverAssignment }>>(
+    `/driver/assignments/${id}/confirm-pickup`,
+    { notes: notes ?? null },
+  );
+
+  return data.data.assignment;
+}
+
+export async function confirmDropoffRequest(
+  id: number,
+  notes?: string | null,
+): Promise<DriverAssignment> {
+  const { data } = await api.put<ApiSuccess<{ assignment: DriverAssignment }>>(
+    `/driver/assignments/${id}/confirm-dropoff`,
+    { notes: notes ?? null },
+  );
+
+  return data.data.assignment;
+}
